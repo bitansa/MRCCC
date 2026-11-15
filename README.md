@@ -80,11 +80,10 @@ donors, ranked by p-value and LD-clumped (r^2 <= 0.8) to at most ten.
 
 `mrccc()` runs `nChains` chains (default 4) of `nIter` iterations (default
 20,000, of which the first 2,000 are discarded as burn-in) from dispersed
-starting values and pools the retained draws. Per-chain Monte Carlo standard errors combine
-in quadrature, so `C` chains of `nIter` iterations carry about the same
-standard error as one chain of `C * nIter`. Several chains also give the
-Gelman-Rubin statistic, reported by `convergence()`. `mrccc()` warns when
-any R-hat exceeds 1.01.
+starting values and pools the retained draws. Pooling `C` chains gives
+about the same Monte Carlo precision as one chain that retains `C` times as
+many draws. Several chains also give the Gelman-Rubin statistic, reported
+by `convergence()`. `mrccc()` warns when any R-hat exceeds 1.01.
 
 `instrumentStrength()` reports the first-stage partial F statistic of each
 instrument set, and a message is issued when either falls below 10. The
