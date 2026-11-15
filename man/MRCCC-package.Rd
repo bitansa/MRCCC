@@ -9,31 +9,29 @@
 MRCCC implements MR-CCC, a Bayesian Mendelian randomization framework for
 inferring causal ligand-receptor signalling between cell types from
 population-scale single-cell expression and genotype data. For each
-ligand-receptor-pathway triplet, cis-eQTL genotypes instrument ligand
-expression in the sender cell type and receptor expression in the receiver
-cell type, and a working model with a ligand-by-receptor interaction is
-fitted to downstream pathway activity by a blocked Gibbs sampler. A
-spike-and-slab prior on the causal block yields a posterior inclusion
-probability that serves as the communication score.
+ligand-receptor-pathway triplet, cis-eQTL genotypes of the same donors
+instrument ligand expression in the sender cell type and receptor
+expression in the receiver cell type, and a working model with a
+ligand-by-receptor interaction is fitted to downstream pathway activity by
+a blocked Gibbs sampler. A spike-and-slab prior on the causal block yields
+a posterior inclusion probability that serves as the communication score.
 }
-\section{Main functions}{
+\section{Workflow}{
 
 \describe{
-\item{\code{\link[=mr_ccc]{mr_ccc()}}}{Fit the model to one triplet and obtain the posterior
-inclusion probability, effect estimates, Monte Carlo error and
-convergence diagnostics.}
-\item{\code{\link[=credible_intervals]{credible_intervals()}}}{Credible intervals for the three effect
-sizes.}
-\item{\code{\link[=sign_probabilities]{sign_probabilities()}}}{Marginal and conditional posterior sign
-probabilities of the interaction effect.}
-\item{\code{\link[=sign_reversal]{sign_reversal()}}}{Posterior of the receptor level at which the
-ligand effect reverses sign.}
-\item{\code{\link[=plot_effect_curve]{plot_effect_curve()}}}{Effect curve with a pointwise credible
-band.}
-\item{\code{\link[=bayes_fdr]{bayes_fdr()}}, \code{\link[=bfdr_threshold_set]{bfdr_threshold_set()}}}{Bayesian false discovery
-rate control across many triplets.}
-\item{\code{\link[=simulate_mrccc]{simulate_mrccc()}}}{Simulate a triplet from the working model.}
-\item{\code{\link[=mr_ccc_gibbs]{mr_ccc_gibbs()}}}{The compiled Gibbs sampler.}
+\item{\code{\link[=buildTriplet]{buildTriplet()}}}{Assemble one triplet from donor-level
+\code{SummarizedExperiment} objects for the sender and receiver cell types
+and a genotype \code{RangedSummarizedExperiment}, selecting cis-eQTL
+instruments with \code{\link[=selectInstruments]{selectInstruments()}}. \code{\link[=MRCCCData]{MRCCCData()}} builds the same
+object from aligned vectors and matrices.}
+\item{\code{\link[=mrccc]{mrccc()}}}{Fit the model. Returns an \link[=MRCCCFit-class]{MRCCCFit} object.}
+\item{\link{MRCCCFit-accessors}}{\code{\link[=pip]{pip()}}, \code{\link[=effectSizes]{effectSizes()}}, \code{\link[=convergence]{convergence()}},
+\code{\link[=instrumentStrength]{instrumentStrength()}} and \code{\link[=posteriorDraws]{posteriorDraws()}}.}
+\item{Posterior summaries}{\code{\link[=credibleIntervals]{credibleIntervals()}},
+\code{\link[=signProbabilities]{signProbabilities()}}, \code{\link[=signReversal]{signReversal()}} and \code{\link[=plotEffectCurve]{plotEffectCurve()}}.}
+\item{\code{\link[=bayesFDR]{bayesFDR()}}, \code{\link[=bfdrSelect]{bfdrSelect()}}}{Bayesian false discovery rate
+control across many triplets.}
+\item{\code{\link[=simulateMRCCC]{simulateMRCCC()}}}{Simulated data in the layout of real data.}
 }
 }
 
@@ -55,7 +53,7 @@ Useful links:
 Authors:
 \itemize{
   \item Bitan Sarkar \email{bitansarkar010899@gmail.com} (\href{https://orcid.org/0009-0000-5178-5934}{ORCID})
-  \item Yang Ni (\href{https://orcid.org/0000-0003-0636-2363}{ORCID})
+  \item Yang Ni (\href{https://orcid.org/0000-0003-0636-2363}{ORCID}) [funder]
 }
 
 }

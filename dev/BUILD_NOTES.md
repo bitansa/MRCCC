@@ -12,7 +12,8 @@ install.packages(c("Rcpp", "RcppArmadillo", "ggplot2",
                    "roxygen2", "devtools", "testthat", "knitr", "rmarkdown"))
 if (!requireNamespace("BiocManager", quietly = TRUE))
     install.packages("BiocManager")
-BiocManager::install(c("BiocStyle", "BiocCheck"))
+BiocManager::install(c("SummarizedExperiment", "S4Vectors", "GenomicRanges",
+                       "IRanges", "BiocStyle", "BiocCheck"))
 ```
 
 A C++ toolchain is required: Rtools on Windows, Xcode command line tools on
@@ -50,7 +51,7 @@ From a shell in the parent directory:
 
 ```sh
 R CMD build MRCCC
-R CMD check --as-cran --no-manual MRCCC_0.99.2.tar.gz
+R CMD check --as-cran --no-manual MRCCC_0.99.6.tar.gz
 ```
 
 Bioconductor does not require `--as-cran`, but its extra checks are useful.
@@ -66,7 +67,7 @@ compiled library on some platforms is acceptable.
 ## 4. BiocCheck
 
 ```r
-BiocCheck::BiocCheck("MRCCC_0.99.2.tar.gz", `new-package` = TRUE)
+BiocCheck::BiocCheck("MRCCC_0.99.6.tar.gz", `new-package` = TRUE)
 BiocCheck::BiocCheckGitClone(".")
 ```
 
@@ -77,29 +78,20 @@ Resolve every ERROR and WARNING. NOTEs should be reviewed individually.
 * Source package under 10 MB (BiocCheck additionally flags a built
   tarball larger than 5 MB).
 * No single file larger than 5 MB.
-* `R CMD check` must complete in under 10 minutes on the build machines;
-  the vignette and examples are sized accordingly (short chains). Do not
-  increase the vignette chain length without re-timing the check.
-* Version `0.99.z` for a new submission; bump `z` for every push to the
+* `R CMD check` must complete in under 10 minutes on the build machines.
+  The vignette fit uses the default chain length and the examples use
+  short chains. Together they take about 30 seconds. Re-time the check
+  after changing either.
+* Version `0.99.z` for a new submission. Bump `z` for every push to the
   submission branch.
 * The `biocViews` terms must be valid for the target release.
 * Unit tests should run in well under 2 minutes.
 
-## 6. Submission issue
-
-The submission is made by opening an issue at
-<https://github.com/Bioconductor/Contributions>. The issue text must
-disclose provenance in accordance with Bioconductor's policy on third-party
-and AI-assisted code: state which parts of the package were written by the
-authors, which were adapted from the published analysis scripts, and
-whether and how AI tools were used in drafting code or documentation. The
-disclosure belongs in the submission issue, not in the package files.
-
-## 7. Files that R CMD check may complain about
+## 6. Files that R CMD check may complain about
 
 * `README.md` and `NEWS.md` at the top level are standard and accepted.
-* `LICENSE.md` is excluded from the build through `.Rbuildignore`; the
+* `LICENSE.md` is excluded from the build through `.Rbuildignore`. The
   short `LICENSE` file (YEAR / COPYRIGHT HOLDER) is what CRAN and
   Bioconductor expect for `MIT + file LICENSE`.
-* `inst/CITATION` is read by `citation("MRCCC")`; check it parses with
+* `inst/CITATION` is read by `citation("MRCCC")`. Check it parses with
   `utils::readCitationFile("inst/CITATION")`.

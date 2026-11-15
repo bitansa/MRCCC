@@ -16,10 +16,10 @@ vignette: >
 
 ```{r setup, include = FALSE}
 knitr::opts_chunk$set(
-  collapse = TRUE,
-  comment = "#>",
-  fig.width = 6,
-  fig.height = 4
+    collapse = TRUE,
+    comment = "#>",
+    fig.width = 6,
+    fig.height = 4
 )
 ```
 
@@ -44,98 +44,163 @@ ligand effect reverses sign, and the Monte Carlo and convergence diagnostics
 needed to trust these numbers. Across many triplets, the PIPs can be
 thresholded with Bayesian false discovery rate control.
 
-```{r load}
+```{r load, message = FALSE}
 library(MRCCC)
+library(SummarizedExperiment)
 ```
+
+# Input data
+
+MR-CCC is a *one-sample* method: expression and genotypes come from the same
+donors, as in population-scale single-cell studies such as OneK1K. Three
+objects are needed, each with donors in columns and identified by the same
+column names.
+
+* **Sender expression**: a `RangedSummarizedExperiment` of donor-level
+  (pseudo-bulk) expression in the sender cell type, genes in rows. Typically
+  counts are summed over the cells of that type for each donor and
+  normalised for library size. The `rowRanges` give gene positions, which
+  are used to find cis-SNPs.
+* **Receiver expression**: the same for the receiver cell type. The
+  receptor and the genes of the downstream pathway are read from it.
+* **Genotypes**: a `RangedSummarizedExperiment` with SNPs in rows,
+  identified by row names and positioned by `rowRanges`. The assay holds
+  **allele dosages**, the number of copies of the alternative allele carried
+  by each donor (0, 1 or 2, or an imputed value in between).
+
+Donor covariates, such as sex, age and genotype principal components, are
+read from `colData`.
+
+The instruments are therefore not SNP-gene pairs taken from an external eQTL
+catalogue. For each ligand and receptor gene, `selectInstruments()` finds
+cis-SNPs in the same donors: SNPs within 200 kb of the transcription start
+site are screened by regressing the gene's donor-level expression on dosage,
+adjusted for the covariates, ranked by p-value, and retained greedily
+subject to a linkage-disequilibrium bound ($r^2 \le 0.8$) until at most ten
+are kept. This is the procedure of the MR-CCC paper.
+
+`simulateMRCCC()` generates data in exactly this layout. Its donors carry an
+unmeasured confounder that affects the ligand, the receptor and the pathway,
+which is the situation in which a plain co-expression analysis is misled.
+
+```{r simulate}
+sim <- simulateMRCCC(n = 300, betaX = 0.3, betaXZ = 0.3, seed = 1)
+sim$sender
+sim$genotypes
+head(colData(sim$receiver))
+```
+
+The ligand `LIG1` is expressed in the sender and the receptor `REC1` in the
+receiver, and the downstream pathway consists of the genes
+`r paste(sim$pathwayGenes, collapse = ", ")` in the receiver. Genotypes are
+dosages:
+
+```{r dosages}
+assay(sim$genotypes, "dosage")[1:4, 1:6]
+```
+
+# Selecting instruments
+
+```{r select}
+covs <- c("sex", "age", "PC1", "PC2")
+ligandSNPs <- selectInstruments(sim$sender, "LIG1", sim$genotypes,
+                                covariates = covs)
+ligandSNPs
+```
+
+Each row is a selected SNP with its screening coefficient (the change in
+expression per copy of the alternative allele) and p-value. Rare SNPs, SNPs
+outside the window and SNPs in strong linkage disequilibrium with a better
+one are excluded. No p-value threshold is imposed. The strength of the
+selected set is reported by the fitted model as a first-stage F statistic.
+
+# Building a triplet
+
+`buildTriplet()` matches donors across the three objects, reads the ligand,
+the receptor and the covariates, scores the pathway, and selects the
+instruments of both genes. The result is an `MRCCCData` object whose
+validity method checks that every component refers to the same donors and
+that genotypes are dosages.
+
+```{r build}
+dat <- buildTriplet(sim$sender, sim$receiver, sim$genotypes,
+                    ligand = "LIG1", receptor = "REC1",
+                    pathway = sim$pathwayGenes, covariates = covs,
+                    pathwayName = "Simulated pathway",
+                    senderName = "Sender", receiverName = "Receiver")
+dat
+```
+
+The pathway score is the mean expression of the pathway genes by default.
+`pathwayMethod = "pc1"` uses their first principal component instead, and a
+precomputed score (for example from AUCell, UCell or GSVA) can be passed as
+a numeric vector named by donor. The analysis in the paper computed six
+such scores for each pathway (first principal component, mean expression,
+AUCell, UCell, ssGSEA and GSVA) and used the one most correlated with
+ligand expression. Instruments chosen in another way can be
+supplied through `ligandSNPs` and `receptorSNPs`. When the data are already
+aligned vectors and matrices, `MRCCCData()` builds the same object directly.
 
 # The model
 
 For donor $i$, let $X_i$ be ligand expression in the sender cell type, $Z_i$
 receptor expression in the receiver cell type, and $Y_i$ pathway activity in
-the receiver cell type. Let $G_i$ and $H_i$ be the cis-eQTL genotypes that
-instrument the ligand and the receptor, and $V_i$ a vector of shared donor
-covariates. The first stage predicts each exposure from its instruments,
-$X_i^* = E[X_i \mid G_i, V_i]$ and $Z_i^* = E[Z_i \mid H_i, V_i]$. The second
-stage models the outcome as
+the receiver cell type. Let $G_i$ and $H_i$ be the dosages of the ligand and
+receptor instruments and $V_i$ the covariates. The first stage predicts each
+exposure from its instruments, $X_i^* = E[X_i \mid G_i, V_i]$ and
+$Z_i^* = E[Z_i \mid H_i, V_i]$. The second stage models the outcome as
 $$
 Y_i = \mu + \gamma\,(\beta_X X_i^* + \beta_{XZ} X_i^* Z_i^*) + \beta_Z Z_i^*
-    + \alpha_Y^\top V_i + \varepsilon_{Yi},
+    + \alpha_Y^\top V_i + \tilde\varepsilon_{Yi},
 $$
 where $\gamma \in \{0, 1\}$ is a spike-and-slab inclusion indicator on the
 causal block $(\beta_X, \beta_{XZ})$. Because $X^*$ and $Z^*$ depend only
 on genotype and the observed covariates, they are unaffected by the
 unmeasured confounders that distort a naive regression of $Y$ on $X$ and
-$Z$. All three stages are
-estimated jointly by a blocked Gibbs sampler.
+$Z$. All stages are estimated jointly by a blocked Gibbs sampler.
 
 The posterior inclusion probability $\mathrm{PIP} = P(\gamma = 1 \mid
 \text{data})$ is the communication score. The receptor-modulated ligand
 effect is $\beta_X + \beta_{XZ} z$, which changes sign at $\tau = -\beta_X /
 \beta_{XZ}$: when $\tau$ lies inside the observed receptor range, the ligand
-activates the pathway in some donors and suppresses it in others. The model
-requires $X$, $Z$ and $Y$, and every column of $G$, $H$ and $V$, to be
-centred, because neither first stage has an intercept; `mr_ccc()` does this
-internally and
-reports effects on a standardised scale (per standard deviation of $X$ and
-$Z$, in standard deviations of $Y$) alongside the raw scale.
-
-# Simulating a triplet
-
-`simulate_mrccc()` generates one triplet from the working model with an
-unmeasured confounder that loads on the ligand, the receptor and the
-pathway. The default generates 300 donors, five instruments per gene, three
-covariates, and a positive interaction.
-
-```{r simulate}
-sim <- simulate_mrccc(n = 300, beta_X = 0.3, beta_XZ = 0.3, beta_Z = 0.5,
-                      conf_strength = 0.7, seed = 1)
-str(sim[c("X", "Z", "Y", "G", "H", "V")])
-sim$truth
-```
+activates the pathway in some donors and suppresses it in others. All
+inputs are centred internally, and effects are reported on a standardised
+scale (per standard deviation of $X$ and $Z$, in standard deviations of $Y$)
+as well as on the input scale.
 
 # Fitting the model
 
-`mr_ccc()` validates the inputs, centres $X$, $Z$, $Y$ and the columns of
-$G$, $H$ and $V$, runs the Gibbs
-sampler, and pools the retained draws. The chain length below is kept short
-so that this document builds quickly; the section on chain length discusses
-the settings appropriate for reported results.
+`mrccc()` runs four chains from dispersed starting values and pools them.
+The default chain length is used here.
 
 ```{r fit}
-fit <- mr_ccc(sim$X, sim$Z, sim$Y, sim$G, sim$H, sim$V,
-              n_iter = 4000, burn_in = 500, seed = 1)
+fit <- mrccc(dat, seed = 1)
 fit
 ```
 
-`summary()` prints the PIP with its Monte Carlo standard error, the
-standardised effects with credible intervals, and the convergence
-diagnostics, and returns the assembled table invisibly.
+The fit is an `MRCCCFit` object, and its contents are read with accessors:
 
-```{r summary}
-tab <- summary(fit)
-tab
+```{r accessors}
+pip(fit)
+pipMCSE(fit)
+effectSizes(fit)
+instrumentStrength(fit)
+convergence(fit)
 ```
 
-# Input from a SummarizedExperiment
+The Gelman-Rubin statistics in `convergence()` are below 1.01, so the four
+chains agree. `mrccc()` warns when any of them exceeds 1.01, and when the
+PIP is within two Monte Carlo standard errors of the discovery threshold.
+In either case the chains should be lengthened before the result is
+reported. A statistic is `NA` when every chain holds the same constant
+value, as happens for $\gamma$ when the PIP is one. The Monte Carlo
+standard error and effective sample size of the PIP are then `NA` as well,
+because the indicator never changes value.
 
-Donor-level (pseudo-bulk) expression is commonly stored in a
-`SummarizedExperiment`, with genes as rows and donors (samples) as columns.
-`se_row()` extracts one gene from such an object as a named numeric vector
-that can be passed to `mr_ccc()` as `X`, `Z` or `Y`. A
-`SummarizedExperiment` that contains exactly one gene can also be passed to
-`mr_ccc()` directly, in which case its first assay row is used. The chunk
-below stores the simulated ligand expression in a one-gene
-`SummarizedExperiment` and refits the model from it, with a short chain to
-keep this document fast.
+`summary()` collects the main quantities:
 
-```{r se-input}
-m <- rbind(LIG1 = as.numeric(sim$X))
-colnames(m) <- paste0("donor", seq_len(nrow(sim$G)))
-se <- SummarizedExperiment::SummarizedExperiment(assays = list(logcounts = m))
-x_se <- se_row(se, "LIG1")
-fit_se <- mr_ccc(x_se, sim$Z, sim$Y, sim$G, sim$H, sim$V,
-                 n_iter = 1500, burn_in = 300, seed = 1)
-fit_se$pip
+```{r summary}
+summary(fit)
 ```
 
 # Posterior summaries
@@ -143,8 +208,8 @@ fit_se$pip
 ## Credible intervals
 
 ```{r ci}
-credible_intervals(fit)
-credible_intervals(fit, level = 0.9, standardized = FALSE)
+credibleIntervals(fit)
+credibleIntervals(fit, level = 0.9, standardized = FALSE)
 ```
 
 ## Sign probabilities of the interaction
@@ -153,102 +218,82 @@ The prior on $(\beta_X, \beta_{XZ})$ is a spike-and-slab mixture, so the
 marginal posterior of $\beta_{XZ}$ mixes draws taken while $\gamma = 0$
 (concentrated near zero) with draws taken while $\gamma = 1$. The marginal
 sign probabilities combine the evidence that there is an effect with the
-evidence about its direction; the conditional probabilities describe the
-direction given that the ligand acts on the pathway. Both are informative.
+evidence about its direction. The conditional probabilities describe the
+direction given that the ligand acts on the pathway.
 
 ```{r signs}
-sign_probabilities(fit)
+signProbabilities(fit)
 ```
 
 ## Sign-reversal threshold
 
-`sign_reversal()` computes $\tau = -\beta_X / \beta_{XZ}$ from paired draws
-and reports it in standard-deviation units of receptor expression relative
-to the mean. The element `p_in_range` is the posterior probability that
-$\tau$ lies inside the observed receptor range, which determines whether the
-reversal is realised in the donor population.
+`signReversal()` computes $\tau = -\beta_X / \beta_{XZ}$ from paired draws,
+in standard deviations of receptor expression relative to its mean. The
+column `pInRange` is the posterior probability that $\tau$ lies inside the
+observed receptor range, which determines whether the reversal is realised
+among the donors.
 
 ```{r tau}
-sr <- sign_reversal(fit, Z_observed = sim$Z)
-sr[c("tau_median", "tau_lower", "tau_upper", "Z_range_std", "p_in_range")]
+signReversal(fit)
 ```
 
-In this simulation the true threshold is $Z = -0.3 / 0.3 = -1$, which
-corresponds to `r round((-1 - mean(sim$Z)) / sd(sim$Z), 2)` standard
-deviations from the mean receptor expression.
+The true threshold in this simulation is `r round(sim$truth$tauStd, 2)`
+standard deviations from the mean receptor expression.
 
 ## Effect curve
 
-`plot_effect_curve()` draws the posterior mean of $\beta_X + \beta_{XZ} z$
-over the observed receptor range with a pointwise credible band built from
-paired draws.
+`plotEffectCurve()`, also available as `plot(fit)`, draws the posterior mean
+of $\beta_X + \beta_{XZ} z$ over the observed receptor range with a
+pointwise credible band built from paired draws.
 
-```{r curve, fig.cap = "Receptor-modulated ligand effect with a 95 percent pointwise credible band."}
-plot_effect_curve(fit, Z_observed = sim$Z)
+```{r curve}
+#| fig.cap: >
+#|   Receptor-modulated ligand effect with a 95 percent pointwise
+#|   credible band.
+plotEffectCurve(fit)
 ```
 
 # Choosing the chain length
 
 The PIP is the mean of an autocorrelated binary chain, so its Monte Carlo
 standard error (MCSE) is estimated by non-overlapping batch means within each
-chain and combined across chains in quadrature. The effective sample size
-(ESS) is the number of independent draws that would give the same precision.
+chain and combined across chains. The effective sample size (ESS) is the
+number of independent draws that would give the same precision. Pooling
+$C$ chains of `nIter` iterations, each discarding `burnIn`, carries about
+the same standard error as one chain that retains $C \times$ (`nIter` $-$
+`burnIn`) draws, and several chains also yield $\hat R$.
 
-```{r mcse}
-c(pip = fit$pip, mcse = fit$pip_mcse, ess = fit$pip_ess)
-```
+When the PIP lies close to the discovery threshold, or the instruments are
+weak, much longer chains are needed to resolve it. The real-data analysis
+in the paper pools four chains of 100,000 iterations per triplet. Its
+simulation studies run one chain per fit, of 20,000 iterations when the
+instruments are strong and of 400,000 iterations when they are weak or
+otherwise misspecified. A single chain is run with `nChains = 1`, and it
+starts from zero. `posteriorDraws()` returns the retained draws with their
+chain index for trace plots and further checks.
 
-When the PIP lies within two MCSEs of the discovery threshold (0.5 by
-default), `mr_ccc()` issues a warning: the discovery status of the triplet
-is not resolved at the current chain length, and either `n_iter` or
-`n_chains` should be increased. The warning is a property of the Monte Carlo
-approximation, not of the data; a longer run narrows the MCSE until the
-status is resolved or the PIP is shown to sit genuinely at the threshold.
-
-The short chain used in this document is adequate for illustration only. For
-reported results, substantially longer chains should be used; the analysis in
-the paper pools four chains of 100,000 iterations.
-
-Chains alternate their starting value of $\gamma$ and initialise
-$(\beta_X, \beta_{XZ})$ from a normal distribution with standard deviation
-`init_scale`, so they begin at dispersed points. The Gelman-Rubin statistic
-$\hat R$ is then reported for $\beta_X$, $\beta_{XZ}$, $\gamma$ and the joint
-log-likelihood in `fit$diagnostics`; it is `NA` if a single chain was run,
-because $\hat R$ compares the variance between chains with the variance
-within them and there is nothing to compare. This is why the default is
-`n_chains = 4`.
-
-Pooling chains costs little more than lengthening one. Per-chain Monte
-Carlo standard errors combine in quadrature, so $C$ chains of `n_iter`
-iterations, each discarding `burn_in`, carry approximately the same standard
-error as one chain that retains $C \times$ (`n_iter` $-$ `burn_in`) draws.
-The additional cost is the $C - 1$ extra burn-in periods, and several chains
-also yield $\hat R$.
-
-```{r chains}
-fit2 <- mr_ccc(sim$X, sim$Z, sim$Y, sim$G, sim$H, sim$V,
-               n_iter = 2000, burn_in = 500, n_chains = 2, seed = 2)
-fit2$diagnostics
+```{r draws}
+head(posteriorDraws(fit))
 ```
 
 # Screening many triplets
 
-In a full analysis `mr_ccc()` is applied to every candidate triplet and the
-PIPs are collected in a vector. For a declared set $S$ the Bayesian false
-discovery rate is
+In a full analysis `buildTriplet()` and `mrccc()` are applied to every
+candidate triplet, and the PIPs are collected. For a declared set $S$ the
+Bayesian false discovery rate is
 $$
 \mathrm{bFDR}(S) = |S|^{-1} \sum_{j \in S} (1 - \mathrm{PIP}_j),
 $$
-the posterior expected proportion of false discoveries. `bayes_fdr()` returns
-the bFDR of each nested top-$k$ set ranked by PIP, and
-`bfdr_threshold_set()` selects the largest set whose bFDR does not exceed a
-target level.
+the posterior expected proportion of false discoveries. `bayesFDR()` returns
+the bFDR of each nested top-$k$ set ranked by PIP, and `bfdrSelect()` selects
+the largest set whose bFDR does not exceed a target level. Both accept a
+numeric vector of PIPs or a list of `MRCCCFit` objects.
 
 ```{r bfdr}
 pips <- c(0.98, 0.95, 0.91, 0.84, 0.72, 0.61, 0.48, 0.30, 0.12, 0.05)
-data.frame(pip = pips, bfdr = bayes_fdr(pips),
-           selected_10 = bfdr_threshold_set(pips, alpha = 0.10),
-           selected_20 = bfdr_threshold_set(pips, alpha = 0.20))
+data.frame(pip = pips, bfdr = bayesFDR(pips),
+           selected10 = bfdrSelect(pips, alpha = 0.10),
+           selected20 = bfdrSelect(pips, alpha = 0.20))
 ```
 
 # Session information

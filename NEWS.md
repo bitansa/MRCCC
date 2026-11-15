@@ -1,10 +1,38 @@
+# MRCCC 0.99.6
+
+* The interface is now built on S4 classes. `MRCCCData` holds one
+  ligand-receptor-pathway triplet with a validity method that checks donor
+  alignment, allele dosages in [0, 2] and missing values. `mrccc()` fits the
+  model and returns an `MRCCCFit` object, read with the accessors `pip()`,
+  `pipMCSE()`, `effectSizes()`, `convergence()`, `instrumentStrength()` and
+  `posteriorDraws()`.
+* `buildTriplet()` assembles a triplet from sender and receiver
+  `SummarizedExperiment` objects and a genotype `RangedSummarizedExperiment`:
+  donors are matched by column name, covariates are read from `colData`,
+  and the pathway is scored from the receiver's expression of its genes.
+* `selectInstruments()` selects cis-eQTL instruments as in the paper: a
+  window of 200 kb around the transcription start site, a carrier-frequency
+  filter, a covariate-adjusted screen in the same donors, and greedy LD
+  clumping at r^2 <= 0.8 to at most ten SNPs.
+* `simulateMRCCC()` returns simulated data in this layout.
+* Exported functions use camelCase: `credibleIntervals()`,
+  `signProbabilities()`, `signReversal()`, `plotEffectCurve()`,
+  `bayesFDR()`, `bfdrSelect()` and `mrcccHyperparameters()`. `mr_ccc()`,
+  `se_row()` and `simulate_mrccc()` are replaced by the functions above,
+  and the compiled sampler is no longer exported.
+* The vignette describes the input data, including the units of the
+  genotypes and the definition of the instruments, and its example fit
+  converges at the default chain length.
+* The help page of `mrccc()` and the vignette state the chain settings used
+  in the paper, for analyses that compare with them.
+
 # MRCCC 0.99.5
 
 * `mr_ccc_gibbs()` gains the argument `save_first_stage` (default `FALSE`).
   When `TRUE`, the retained draws of the first-stage instrument effects are
   returned as `Pi_X_draws` and `Pi_Z_draws`, so that credible intervals for
   the instrument effects can be computed inside the model. Storing them
-  uses no random numbers; all other outputs are unchanged.
+  uses no random numbers. All other outputs are unchanged.
 
 # MRCCC 0.99.4
 

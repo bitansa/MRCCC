@@ -6,3 +6,4 @@
 ^LICENSE\.md$
 ^\.gitignore$
 ^\.DS_Store$
+^MRCCC\.BiocCheck$

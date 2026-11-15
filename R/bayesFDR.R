@@ -5,8 +5,9 @@
 #' rate (bFDR) of every nested set obtained by declaring the top-\eqn{k}
 #' triplets by PIP, for \eqn{k = 1, \ldots, m}.
 #'
-#' @param pip Numeric vector of posterior inclusion probabilities in
-#'   \eqn{[0, 1]}, one per triplet. Missing values are not allowed.
+#' @param pip Posterior inclusion probabilities, one per triplet: a
+#'   numeric vector in \eqn{[0, 1]}, or a list of [MRCCCFit-class] objects.
+#'   Missing values are not allowed.
 #'
 #' @details
 #' For a declared set \eqn{S}, the posterior expected number of false
@@ -18,13 +19,13 @@
 #' it. Because the PIPs are posterior probabilities, this controls the
 #' expected proportion of false discoveries without a separate multiplicity
 #' correction. The value returned for triplet \eqn{j} is the bFDR of the
-#' smallest nested set that contains \eqn{j}; it is non-decreasing in the
+#' smallest nested set that contains \eqn{j}. It is non-decreasing in the
 #' rank of \eqn{j}. Ties in PIP are broken by input order.
 #'
 #' @return A numeric vector of the same length as `pip`, in the order of the
 #'   input, giving the bFDR of the nested set that ends at each triplet.
 #'
-#' @seealso [bfdr_threshold_set()], [mr_ccc()]
+#' @seealso [bfdrSelect()], [mrccc()], [pip()]
 #'
 #' @references
 #' Newton MA, Noueiry A, Sarkar D, Ahlquist P (2004). Detecting differential
@@ -33,19 +34,19 @@
 #'
 #' @examples
 #' pip <- c(0.9, 0.8, 0.5)
-#' bayes_fdr(pip)
-#' # Unsorted input is handled; results are returned in input order.
-#' bayes_fdr(c(0.5, 0.9, 0.8))
+#' bayesFDR(pip)
+#' # Unsorted input is handled. Results are returned in input order.
+#' bayesFDR(c(0.5, 0.9, 0.8))
 #'
 #' @export
-bayes_fdr <- function(pip) {
-  pip <- check_pip(pip)
-  if (length(pip) == 0L) return(numeric(0))
-  o   <- order(pip, decreasing = TRUE)
-  f   <- cumsum(1 - pip[o]) / seq_along(pip)
-  out <- numeric(length(pip))
-  out[o] <- f
-  out
+bayesFDR <- function(pip) {
+    pip <- check_pip(pip)
+    if (length(pip) == 0L) return(numeric(0))
+    o   <- order(pip, decreasing = TRUE)
+    f   <- cumsum(1 - pip[o]) / seq_along(pip)
+    out <- numeric(length(pip))
+    out[o] <- f
+    out
 }
 
 #' Largest PIP-ranked set with Bayesian FDR at most alpha
@@ -55,38 +56,38 @@ bayes_fdr <- function(pip) {
 #' `alpha`. The rule is monotone: if the top-\eqn{k} set qualifies, so does
 #' every smaller top-\eqn{k'} set. If no set qualifies, nothing is selected.
 #'
-#' @param pip Numeric vector of posterior inclusion probabilities in
-#'   \eqn{[0, 1]}, one per triplet.
+#' @param pip Posterior inclusion probabilities, one per triplet: a
+#'   numeric vector in \eqn{[0, 1]}, or a list of [MRCCCFit-class] objects.
 #' @param alpha Target Bayesian false discovery rate in \eqn{(0, 1)}.
 #'
 #' @return A logical vector of the same length as `pip`, in input order,
 #'   that is `TRUE` for the selected triplets.
 #'
-#' @seealso [bayes_fdr()]
+#' @seealso [bayesFDR()]
 #'
 #' @examples
 #' pip <- c(0.9, 0.8, 0.5, 0.2)
-#' bayes_fdr(pip)
-#' bfdr_threshold_set(pip, alpha = 0.2)
-#' bfdr_threshold_set(pip, alpha = 0.05)
+#' bayesFDR(pip)
+#' bfdrSelect(pip, alpha = 0.2)
+#' bfdrSelect(pip, alpha = 0.05)
 #'
 #' @export
-bfdr_threshold_set <- function(pip, alpha) {
-  pip <- check_pip(pip)
-  check_scalar(alpha, "alpha")
-  if (alpha <= 0 || alpha >= 1) {
-    stop("'alpha' must lie strictly between 0 and 1.", call. = FALSE)
-  }
-  keep <- rep(FALSE, length(pip))
-  if (length(pip) == 0L) return(keep)
-  o <- order(pip, decreasing = TRUE)
-  f <- cumsum(1 - pip[o]) / seq_along(pip)
-  ok <- which(f <= alpha)
-  if (length(ok) > 0L) {
-    k <- max(ok)
-    keep[o[seq_len(k)]] <- TRUE
-  }
-  keep
+bfdrSelect <- function(pip, alpha) {
+    pip <- check_pip(pip)
+    check_scalar(alpha, "alpha")
+    if (alpha <= 0 || alpha >= 1) {
+        stop("'alpha' must lie strictly between 0 and 1.", call. = FALSE)
+    }
+    keep <- rep(FALSE, length(pip))
+    if (length(pip) == 0L) return(keep)
+    o <- order(pip, decreasing = TRUE)
+    f <- cumsum(1 - pip[o]) / seq_along(pip)
+    ok <- which(f <= alpha)
+    if (length(ok) > 0L) {
+        k <- max(ok)
+        keep[o[seq_len(k)]] <- TRUE
+    }
+    keep
 }
 
 #' Validate a vector of posterior inclusion probabilities
@@ -96,16 +97,20 @@ bfdr_threshold_set <- function(pip, alpha) {
 #' @noRd
 #' @keywords internal
 check_pip <- function(pip) {
-  if (!is.numeric(pip)) {
-    stop("'pip' must be a numeric vector of posterior inclusion ",
-         "probabilities.", call. = FALSE)
-  }
-  pip <- as.numeric(pip)
-  if (any(!is.finite(pip))) {
-    stop("'pip' contains NA, NaN or infinite values.", call. = FALSE)
-  }
-  if (any(pip < 0 | pip > 1)) {
-    stop("'pip' must lie in [0, 1].", call. = FALSE)
-  }
-  pip
+    if (is.list(pip) && length(pip) > 0L &&
+        all(vapply(pip, methods::is, logical(1), class2 = "MRCCCFit"))) {
+        pip <- vapply(pip, function(f) f@pip, numeric(1))
+    }
+    if (!is.numeric(pip)) {
+        stop("'pip' must be a numeric vector of posterior inclusion ",
+             "probabilities or a list of MRCCCFit objects.", call. = FALSE)
+    }
+    pip <- as.numeric(pip)
+    if (any(!is.finite(pip))) {
+        stop("'pip' contains NA, NaN or infinite values.", call. = FALSE)
+    }
+    if (any(pip < 0 | pip > 1)) {
+        stop("'pip' must lie in [0, 1].", call. = FALSE)
+    }
+    pip
 }

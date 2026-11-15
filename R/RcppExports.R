@@ -5,10 +5,9 @@
 #'
 #' Runs the blocked Gibbs sampler for a single ligand-receptor-pathway
 #' triplet and returns posterior means together with the retained draws of
-#' the scalar parameters of inferential interest. This is the low-level
-#' engine called by [mr_ccc()]; most users should call [mr_ccc()], which
-#' validates and centres the inputs, runs several chains, and computes
-#' convergence diagnostics.
+#' the scalar parameters of inferential interest. This is the internal
+#' engine called by mrccc(), which validates and centres the inputs, runs
+#' several chains, and computes convergence diagnostics.
 #'
 #' @param X Numeric matrix of dimension n x 1: centred ligand expression in
 #'   the sender cell type.
@@ -22,30 +21,30 @@
 #'   cis-eQTL genotypes (instruments for Z).
 #' @param V Numeric matrix of dimension n x pV, pV >= 1: column-centred
 #'   shared covariates. The first stages have no intercept, so all three
-#'   design matrices must be centred, as [mr_ccc()] does.
+#'   design matrices must be centred, as mrccc() does.
 #' @param n_iter Total number of Gibbs iterations.
 #' @param burn_in Number of initial iterations discarded.
-#' @param thin Thinning interval; every `thin`-th post-burn-in iteration is
+#' @param thin Thinning interval. Every `thin`-th post-burn-in iteration is
 #'   retained.
 #' @param a_sigma,b_sigma Inverse-gamma shape and scale for the three
 #'   residual variances.
 #' @param a_rho,b_rho Beta shape parameters for the prior inclusion
 #'   probability rho.
-#' @param nu1 Spike variance multiplier; small values enforce a near-zero
+#' @param nu1 Spike variance multiplier. Small values enforce a near-zero
 #'   spike.
 #' @param gG,gV,gH,gZ,gBeta Prior scale factors for the first-stage sender
 #'   effects, the covariate effects, the first-stage receiver effects, the
 #'   receptor main effect, and the causal block (Beta_X, Beta_XZ). The first
-#'   three are Zellner g-priors on the observed designs G, V and H; the last
+#'   three are Zellner g-priors on the observed designs G, V and H. The last
 #'   two scale a fixed diagonal computed once from the least-squares first
 #'   stage (see Details).
 #' @param ridge Diagonal ridge added before every matrix inversion.
 #' @param init_gamma Starting value (0 or 1) of the inclusion indicator.
 #' @param init_scale If greater than zero, Beta_X and Beta_XZ start from
 #'   independent normal draws with standard deviation `init_scale`.
-#' @param verbose Logical; if `TRUE`, a progress line is printed every 1000
+#' @param verbose Logical. If `TRUE`, a progress line is printed every 1000
 #'   iterations.
-#' @param save_first_stage Logical; if `TRUE`, the retained draws of the
+#' @param save_first_stage Logical. If `TRUE`, the retained draws of the
 #'   first-stage instrument effects are also returned, as `Pi_X_draws` and
 #'   `Pi_Z_draws`. Storing them uses no random numbers, so the other outputs
 #'   are identical to those of a call with `save_first_stage = FALSE` under
@@ -54,15 +53,15 @@
 #' @details
 #' The priors on the second-stage coefficients are
 #' \deqn{(\beta_X, \beta_{XZ}) \mid \gamma, \sigma_Y^2 \sim
-#'   N_2(0,\; g_\beta s_\gamma \sigma_Y^2 D_0^{-1}), \qquad
-#'   \beta_Z \mid \sigma_Y^2 \sim N(0,\; g_Z \sigma_Y^2 / d_Z),}
+#'   N_2(0,\, g_\beta s_\gamma \sigma_Y^2 D_0^{-1}), \qquad
+#'   \beta_Z \mid \sigma_Y^2 \sim N(0,\, g_Z \sigma_Y^2 / d_Z),}
 #' with \eqn{D_0 = \mathrm{diag}(\|\hat X^*\|^2, \|\hat X^* \circ \hat Z^*\|^2)}
 #' and \eqn{d_Z = \|\hat Z^*\|^2} computed once from least squares of X on
 #' \[G V\] and of Z on \[H V\] and held fixed, and \eqn{s_\gamma = 1} in the
 #' slab and `nu1` in the spike. Because the projected regressors \eqn{X^*}
 #' and \eqn{Z^*} are functions of the first-stage parameters, a prior whose
 #' covariance was recomputed from the current draws would enter the full
-#' conditionals of those parameters; fixing the scale keeps every update an
+#' conditionals of those parameters. Fixing the scale keeps every update an
 #' exact conjugate step. The values used are returned in `prior_scale`.
 #'
 #' @return A named list with posterior means (`Pi_X_mean`, `Alpha_X_mean`,
@@ -79,20 +78,8 @@
 #'   contains `Pi_X_draws` and `Pi_Z_draws`, matrices with `n_keep` rows and
 #'   one column per instrument in `G` and `H` respectively.
 #'
-#' @seealso [mr_ccc()] for the user-facing interface.
-#'
-#' @examples
-#' sim <- simulate_mrccc(n = 120, seed = 1)
-#' ctr <- function(v) matrix(v - mean(v), ncol = 1)
-#' ctr_cols <- function(M) scale(M, center = TRUE, scale = FALSE)
-#' out <- mr_ccc_gibbs(ctr(sim$X), ctr(sim$Z), ctr(sim$Y),
-#'                     ctr_cols(sim$G), ctr_cols(sim$H), ctr_cols(sim$V),
-#'                     n_iter = 400, burn_in = 100, thin = 1)
-#' out$gamma_mean
-#' out$prior_scale
-#' length(out$Beta_XZ_draws) == out$n_keep
-#'
-#' @export
+#' @keywords internal
+#' @noRd
 mr_ccc_gibbs <- function(X, Z, Y, G, H, V, n_iter = 20000L, burn_in = 2000L, thin = 1L, a_sigma = 3.0, b_sigma = 2.0, a_rho = 3.0, b_rho = 1.0, nu1 = 1e-4, gG = 100.0, gV = 100.0, gH = 100.0, gZ = 100.0, gBeta = 100.0, ridge = 1e-8, init_gamma = 1L, init_scale = 0.0, verbose = FALSE, save_first_stage = FALSE) {
     .Call(`_MRCCC_mr_ccc_gibbs`, X, Z, Y, G, H, V, n_iter, burn_in, thin, a_sigma, b_sigma, a_rho, b_rho, nu1, gG, gV, gH, gZ, gBeta, ridge, init_gamma, init_scale, verbose, save_first_stage)
 }

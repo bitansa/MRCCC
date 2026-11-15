@@ -1,12 +1,12 @@
 Package: MRCCC
 Type: Package
 Title: Bayesian Mendelian Randomization for Causal Cell-Cell Communication
-Version: 0.99.5
+Version: 0.99.6
 Authors@R: c(
     person("Bitan", "Sarkar", email = "bitansarkar010899@gmail.com",
            role = c("aut", "cre"),
            comment = c(ORCID = "0009-0000-5178-5934")),
-    person("Yang", "Ni", role = "aut",
+    person("Yang", "Ni", role = c("aut", "fnd"),
            comment = c(ORCID = "0000-0003-0636-2363")))
 Description: Implements MR-CCC, a Bayesian Mendelian randomization framework
     for inferring causal ligand-receptor signalling between cell types from
@@ -19,16 +19,23 @@ Description: Implements MR-CCC, a Bayesian Mendelian randomization framework
     inclusion probability that serves as the communication score, and the
     retained draws support credible intervals, sign probabilities, the
     receptor level at which the ligand effect reverses sign, and Bayesian
-    false discovery rate control across many triplets.
+    false discovery rate control across many triplets. Inputs are taken
+    from SummarizedExperiment objects of donor-level expression and
+    genotype dosages, and cis-eQTL instruments can be selected within the
+    package.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Depends: R (>= 4.6.0)
 Imports:
+    methods,
+    stats,
+    utils,
     Rcpp,
     SummarizedExperiment,
+    S4Vectors,
+    GenomicRanges,
+    IRanges,
     ggplot2 (>= 3.4.0),
-    stats,
-    methods,
     withr (>= 2.5.0)
 LinkingTo:
     Rcpp,
@@ -47,3 +54,21 @@ Roxygen: list(markdown = TRUE)
 Config/testthat/edition: 3
 NeedsCompilation: yes
 Config/roxygen2/version: 8.1.0
+Collate:
+    'AllClasses.R'
+    'AllGenerics.R'
+    'MRCCC-package.R'
+    'MRCCCData.R'
+    'mrccc.R'
+    'MRCCCFit-methods.R'
+    'RcppExports.R'
+    'bayesFDR.R'
+    'selectInstruments.R'
+    'buildTriplet.R'
+    'credibleIntervals.R'
+    'hyperparameters.R'
+    'internal.R'
+    'plotEffectCurve.R'
+    'signProbabilities.R'
+    'signReversal.R'
+    'simulateMRCCC.R'

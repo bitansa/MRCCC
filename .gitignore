@@ -9,3 +9,5 @@ src/*.dll
 inst/doc
 doc
 Meta
+MRCCC.BiocCheck
+dev/check_*.R

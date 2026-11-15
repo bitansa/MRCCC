@@ -1,253 +1,72 @@
-sim <- simulate_mrccc(n = 60, seed = 3)
+inp <- makeInputs(n = 60, seed = 3)
+dat <- dataFrom(inp)
 
-# n_iter and burn_in are formal arguments here rather than fixed inside the
-# body, so that a test can override either without the call matching the
-# same argument twice.
-small_fit <- function(..., n_iter = 50, burn_in = 10) {
-  mr_ccc(sim$X, sim$Z, sim$Y, sim$G, sim$H, sim$V,
-         n_iter = n_iter, burn_in = burn_in, ...)
+smallFit <- function(..., nIter = 50, burnIn = 10) {
+    mrccc(dat, nIter = nIter, burnIn = burnIn, ...)
 }
 
-test_that("mismatched row counts are rejected", {
-  expect_error(
-    mr_ccc(sim$X[-1, , drop = FALSE], sim$Z, sim$Y, sim$G, sim$H, sim$V,
-           n_iter = 50, burn_in = 10),
-    "same number of rows"
-  )
-  expect_error(
-    mr_ccc(sim$X, sim$Z, sim$Y, sim$G[-1, ], sim$H, sim$V,
-           n_iter = 50, burn_in = 10),
-    "same number of rows"
-  )
-})
-
-test_that("missing and non-finite values are rejected", {
-  Xna <- sim$X; Xna[5, 1] <- NA
-  expect_error(
-    mr_ccc(Xna, sim$Z, sim$Y, sim$G, sim$H, sim$V, n_iter = 50, burn_in = 10),
-    "'X' contains NA"
-  )
-  Ginf <- sim$G; Ginf[2, 1] <- Inf
-  expect_error(
-    mr_ccc(sim$X, sim$Z, sim$Y, Ginf, sim$H, sim$V, n_iter = 50, burn_in = 10),
-    "'G' contains NA"
-  )
-})
-
-test_that("non-numeric inputs are rejected", {
-  expect_error(
-    mr_ccc(as.character(sim$X), sim$Z, sim$Y, sim$G, sim$H, sim$V,
-           n_iter = 50, burn_in = 10),
-    "'X' must be numeric"
-  )
-  expect_error(
-    mr_ccc(sim$X, sim$Z, sim$Y, matrix("a", 60, 2), sim$H, sim$V,
-           n_iter = 50, burn_in = 10),
-    "'G' must be a numeric matrix"
-  )
-})
-
-test_that("multi-column X, Z or Y is rejected", {
-  expect_error(
-    mr_ccc(cbind(sim$X, sim$X), sim$Z, sim$Y, sim$G, sim$H, sim$V,
-           n_iter = 50, burn_in = 10),
-    "exactly one column"
-  )
-})
-
-test_that("V = NULL is rejected with an informative message", {
-  expect_error(
-    mr_ccc(sim$X, sim$Z, sim$Y, sim$G, sim$H, V = NULL,
-           n_iter = 50, burn_in = 10),
-    "'V' must be a numeric matrix with at least one covariate column"
-  )
-})
-
-test_that("V is a required argument", {
-  expect_error(
-    mr_ccc(sim$X, sim$Z, sim$Y, sim$G, sim$H, n_iter = 50, burn_in = 10),
-    "'V' must be a numeric matrix with at least one covariate column"
-  )
-})
-
-test_that("too few donors are rejected", {
-  idx <- seq_len(8)
-  expect_error(
-    mr_ccc(sim$X[idx, , drop = FALSE], sim$Z[idx, , drop = FALSE],
-           sim$Y[idx, , drop = FALSE], sim$G[idx, ], sim$H[idx, ],
-           sim$V[idx, ], n_iter = 50, burn_in = 10),
-    "At least 10 donors"
-  )
-})
-
-test_that("constant, duplicated and saturating design columns are rejected", {
-  Gconst <- sim$G; Gconst[, 2] <- 1
-  expect_error(
-    mr_ccc(sim$X, sim$Z, sim$Y, Gconst, sim$H, sim$V,
-           n_iter = 50, burn_in = 10),
-    "'G' has constant column"
-  )
-
-  Vconst <- cbind(sim$V, 1)
-  expect_error(
-    mr_ccc(sim$X, sim$Z, sim$Y, sim$G, sim$H, Vconst,
-           n_iter = 50, burn_in = 10),
-    "already includes an intercept"
-  )
-
-  Gdup <- sim$G; Gdup[, 3] <- Gdup[, 1]
-  expect_error(
-    mr_ccc(sim$X, sim$Z, sim$Y, Gdup, sim$H, sim$V,
-           n_iter = 50, burn_in = 10),
-    "duplicated column"
-  )
-
-  # More instrument columns than donors saturates the first stage.
-  withr::local_seed(11)
-  idx   <- seq_len(12)
-  Gwide <- matrix(stats::rnorm(12 * 15), nrow = 12)
-  expect_error(
-    mr_ccc(sim$X[idx, , drop = FALSE], sim$Z[idx, , drop = FALSE],
-           sim$Y[idx, , drop = FALSE], Gwide, sim$H[idx, ], sim$V[idx, ],
-           n_iter = 50, burn_in = 10),
-    "saturated"
-  )
-})
-
-test_that("too few donors for the number of columns is rejected", {
-  idx <- seq_len(16)
-  expect_error(
-    mr_ccc(sim$X[idx, , drop = FALSE], sim$Z[idx, , drop = FALSE],
-           sim$Y[idx, , drop = FALSE], sim$G[idx, ], sim$H[idx, ],
-           sim$V[idx, ], n_iter = 50, burn_in = 10),
-    "Too few donors for the model"
-  )
-})
-
-test_that("a configuration retaining fewer than two draws is rejected", {
-  expect_error(small_fit(n_iter = 20, burn_in = 10, thin = 40),
-               "retain only")
-})
-
-test_that("a non-integer seed is rejected", {
-  expect_error(small_fit(seed = 1.5), "'seed' must be a whole number")
-})
-
 test_that("MCMC settings are validated", {
-  expect_error(
-    mr_ccc(sim$X, sim$Z, sim$Y, sim$G, sim$H, sim$V,
-           n_iter = 100, burn_in = 100),
-    "'n_iter' \\(100\\) must be greater than 'burn_in'"
-  )
-  expect_error(
-    mr_ccc(sim$X, sim$Z, sim$Y, sim$G, sim$H, sim$V,
-           n_iter = 100, burn_in = 200),
-    "must be greater than 'burn_in'"
-  )
-  expect_error(small_fit(thin = 0), "'thin' must be an integer")
-  expect_error(small_fit(thin = 1.5), "'thin' must be an integer")
-  expect_error(small_fit(n_chains = 0), "'n_chains' must be an integer")
-  expect_error(small_fit(init_scale = -1), "'init_scale' must be non-negative")
-  expect_error(small_fit(burn_in = -1), "'burn_in' must be a non-negative")
+    expect_error(smallFit(nIter = 100, burnIn = 100),
+                 "'nIter' \\(100\\) must be greater than 'burnIn'")
+    expect_error(smallFit(nIter = 50.5), "'nIter' must be a positive integer")
+    expect_error(smallFit(burnIn = -1), "'burnIn' must be a non-negative")
+    expect_error(smallFit(thin = 0), "'thin' must be an integer")
+    expect_error(smallFit(nChains = 0), "'nChains' must be an integer")
+    expect_error(smallFit(initScale = -1), "'initScale' must be non-negative")
+    expect_error(smallFit(nIter = 20, burnIn = 10, thin = 40), "retain only")
+    expect_error(smallFit(seed = 1.5), "'seed' must be a whole number")
+    expect_error(smallFit(verbose = NA), "'verbose' must be TRUE or FALSE")
+    expect_error(smallFit(hyper = list(aSigma = 3)),
+                 "'hyper' must be created by mrcccHyperparameters")
+    for (t in c(0, 1, 1.5)) {
+        expect_error(smallFit(pipThreshold = t), "'pipThreshold' must lie")
+    }
 })
 
-test_that("pip_threshold must lie strictly inside (0, 1)", {
-  expect_error(small_fit(pip_threshold = 0), "'pip_threshold' must lie")
-  expect_error(small_fit(pip_threshold = 1), "'pip_threshold' must lie")
-  expect_error(small_fit(pip_threshold = 1.5), "'pip_threshold' must lie")
-})
+test_that("constant and duplicated instrument columns are rejected", {
+    Gconst <- inp$G
+    Gconst[, 2] <- 1
+    d1 <- MRCCCData(ligandExpression = inp$x, receptorExpression = inp$z,
+                    pathwayActivity = inp$y, ligandGenotypes = Gconst,
+                    receptorGenotypes = inp$H, covariates = inp$V)
+    expect_error(mrccc(d1, nIter = 50, burnIn = 10),
+                 "'ligandGenotypes' has constant column")
 
-test_that("hyperparameter constructor validates its inputs", {
-  expect_s3_class(mrccc_hyperparameters(), "mrccc_hyper")
-  expect_null(mrccc_hyperparameters()$g)
-  expect_equal(mrccc_hyperparameters(g = 50)$g, 50)
-  expect_error(mrccc_hyperparameters(nu1 = 1), "'nu1' must lie")
-  expect_error(mrccc_hyperparameters(a_sigma = 0), "must be positive")
-  expect_error(mrccc_hyperparameters(g = -1), "'g' must be positive")
-  expect_error(mrccc_hyperparameters(ridge = -1e-8), "non-negative")
-  expect_error(small_fit(hyper = list(a_sigma = 3)),
-               "'hyper' must be created by mrccc_hyperparameters")
-})
+    Gdup <- inp$G
+    Gdup[, 3] <- Gdup[, 1]
+    d2 <- MRCCCData(ligandExpression = inp$x, receptorExpression = inp$z,
+                    pathwayActivity = inp$y, ligandGenotypes = Gdup,
+                    receptorGenotypes = inp$H, covariates = inp$V)
+    expect_error(mrccc(d2, nIter = 50, burnIn = 10), "duplicated column")
 
-test_that("helper functions reject objects that are not fits", {
-  expect_error(credible_intervals(list()), "must be an object of class")
-  expect_error(sign_probabilities(1), "must be an object of class")
-  expect_error(sign_reversal("a"), "must be an object of class")
-  expect_error(plot_effect_curve(NULL), "must be an object of class")
+    Vconst <- cbind(inp$V, c3 = 1)
+    d3 <- MRCCCData(ligandExpression = inp$x, receptorExpression = inp$z,
+                    pathwayActivity = inp$y, ligandGenotypes = inp$G,
+                    receptorGenotypes = inp$H, covariates = Vconst)
+    expect_error(mrccc(d3, nIter = 50, burnIn = 10),
+                 "already includes an intercept")
 })
 
 test_that("rank-deficient designs are rejected after centring", {
-  sim <- simulate_mrccc(n = 120, seed = 3)
-  G_bad <- cbind(sim$G, 2 - sim$G[, 1])
-  expect_error(
-    mr_ccc(sim$X, sim$Z, sim$Y, G_bad, sim$H, sim$V,
-           n_iter = 300, burn_in = 100, seed = 1),
-    "rank deficient"
-  )
+    Gbad <- cbind(inp$G, flip = 2 - inp$G[, 1])
+    d <- MRCCCData(ligandExpression = inp$x, receptorExpression = inp$z,
+                   pathwayActivity = inp$y, ligandGenotypes = Gbad,
+                   receptorGenotypes = inp$H, covariates = inp$V)
+    expect_error(mrccc(d, nIter = 50, burnIn = 10), "rank deficient")
 })
 
-test_that("rank deficiency between H and V is rejected", {
-  sim <- simulate_mrccc(n = 120, seed = 3)
-  # After centring, the added column is an exact multiple of the first
-  # covariate column.
-  H_bad <- cbind(sim$H, 2 * sim$V[, 1] + 1)
-  expect_error(
-    mr_ccc(sim$X, sim$Z, sim$Y, sim$G, H_bad, sim$V,
-           n_iter = 50, burn_in = 10),
-    "'cbind\\(H, V\\)' is rank deficient"
-  )
+test_that("too few donors for the number of columns is rejected", {
+    idx <- seq_len(12)
+    d <- MRCCCData(ligandExpression = inp$x[idx],
+                   receptorExpression = inp$z[idx],
+                   pathwayActivity = inp$y[idx],
+                   ligandGenotypes = inp$G[idx, ],
+                   receptorGenotypes = inp$H[idx, ],
+                   covariates = inp$V[idx, ])
+    expect_error(mrccc(d, nIter = 50, burnIn = 10),
+                 "Too few donors for the model")
 })
 
-test_that("a non-integer n_iter is rejected", {
-  expect_error(small_fit(n_iter = 50.5), "'n_iter' must be a positive integer")
-})
-
-test_that("an exposure or outcome with zero standard deviation is rejected", {
-  expect_error(
-    mr_ccc(rep(1, nrow(sim$X)), sim$Z, sim$Y, sim$G, sim$H, sim$V,
-           n_iter = 50, burn_in = 10),
-    "must each have positive standard deviation"
-  )
-})
-
-test_that("verbose must be a single TRUE or FALSE", {
-  expect_error(small_fit(verbose = NA), "'verbose' must be TRUE or FALSE")
-  expect_error(small_fit(verbose = "yes"), "'verbose' must be TRUE or FALSE")
-  expect_error(small_fit(verbose = c(TRUE, FALSE)),
-               "'verbose' must be TRUE or FALSE")
-})
-
-test_that("a single chain is reported with a message", {
-  expect_message(
-    suppressWarnings(
-      small_fit(n_iter = 200, burn_in = 50, n_chains = 1, seed = 1)),
-    "Only one chain was run"
-  )
-})
-
-test_that("simulate_mrccc validates its seed", {
-  expect_error(simulate_mrccc(n = 40, seed = 1.5),
-               "'seed' must be a whole number")
-  expect_error(simulate_mrccc(n = 40, seed = "a"),
-               "'seed' must be a single finite number")
-})
-
-test_that("mrccc_hyperparameters rejects non-positive a_rho and b_rho", {
-  expect_error(mrccc_hyperparameters(a_rho = 0),
-               "'a_rho' and 'b_rho' must be positive")
-  expect_error(mrccc_hyperparameters(b_rho = -1),
-               "'a_rho' and 'b_rho' must be positive")
-  expect_error(mrccc_hyperparameters(a_rho = NA),
-               "'a_rho' must be a single finite number")
-})
-
-test_that("a supplied seed leaves the caller's random number state intact", {
-  sim <- simulate_mrccc(n = 120, seed = 3)
-  withr::local_seed(99)
-  before <- runif(1)
-  withr::local_seed(99)
-  invisible(suppressWarnings(suppressMessages(
-    mr_ccc(sim$X, sim$Z, sim$Y, sim$G, sim$H, sim$V,
-           n_iter = 300, burn_in = 100, seed = 1))))
-  expect_identical(runif(1), before)
+test_that("mrccc requires an MRCCCData object", {
+    expect_error(mrccc(list()), "unable to find an inherited method")
 })

@@ -3,30 +3,28 @@
 #' MRCCC implements MR-CCC, a Bayesian Mendelian randomization framework for
 #' inferring causal ligand-receptor signalling between cell types from
 #' population-scale single-cell expression and genotype data. For each
-#' ligand-receptor-pathway triplet, cis-eQTL genotypes instrument ligand
-#' expression in the sender cell type and receptor expression in the receiver
-#' cell type, and a working model with a ligand-by-receptor interaction is
-#' fitted to downstream pathway activity by a blocked Gibbs sampler. A
-#' spike-and-slab prior on the causal block yields a posterior inclusion
-#' probability that serves as the communication score.
+#' ligand-receptor-pathway triplet, cis-eQTL genotypes of the same donors
+#' instrument ligand expression in the sender cell type and receptor
+#' expression in the receiver cell type, and a working model with a
+#' ligand-by-receptor interaction is fitted to downstream pathway activity by
+#' a blocked Gibbs sampler. A spike-and-slab prior on the causal block yields
+#' a posterior inclusion probability that serves as the communication score.
 #'
-#' @section Main functions:
+#' @section Workflow:
 #' \describe{
-#'   \item{[mr_ccc()]}{Fit the model to one triplet and obtain the posterior
-#'     inclusion probability, effect estimates, Monte Carlo error and
-#'     convergence diagnostics.}
-#'   \item{[credible_intervals()]}{Credible intervals for the three effect
-#'     sizes.}
-#'   \item{[sign_probabilities()]}{Marginal and conditional posterior sign
-#'     probabilities of the interaction effect.}
-#'   \item{[sign_reversal()]}{Posterior of the receptor level at which the
-#'     ligand effect reverses sign.}
-#'   \item{[plot_effect_curve()]}{Effect curve with a pointwise credible
-#'     band.}
-#'   \item{[bayes_fdr()], [bfdr_threshold_set()]}{Bayesian false discovery
-#'     rate control across many triplets.}
-#'   \item{[simulate_mrccc()]}{Simulate a triplet from the working model.}
-#'   \item{[mr_ccc_gibbs()]}{The compiled Gibbs sampler.}
+#'   \item{[buildTriplet()]}{Assemble one triplet from donor-level
+#'     `SummarizedExperiment` objects for the sender and receiver cell types
+#'     and a genotype `RangedSummarizedExperiment`, selecting cis-eQTL
+#'     instruments with [selectInstruments()]. [MRCCCData()] builds the same
+#'     object from aligned vectors and matrices.}
+#'   \item{[mrccc()]}{Fit the model. Returns an [MRCCCFit-class] object.}
+#'   \item{[MRCCCFit-accessors]}{[pip()], [effectSizes()], [convergence()],
+#'     [instrumentStrength()] and [posteriorDraws()].}
+#'   \item{Posterior summaries}{[credibleIntervals()],
+#'     [signProbabilities()], [signReversal()] and [plotEffectCurve()].}
+#'   \item{[bayesFDR()], [bfdrSelect()]}{Bayesian false discovery rate
+#'     control across many triplets.}
+#'   \item{[simulateMRCCC()]}{Simulated data in the layout of real data.}
 #' }
 #'
 #' @references
@@ -35,10 +33,8 @@
 #'
 #' @useDynLib MRCCC, .registration = TRUE
 #' @importFrom Rcpp sourceCpp
-#' @importFrom SummarizedExperiment assay assayNames
-#' @importFrom methods is
-#' @importFrom stats var sd quantile rnorm lm.fit
-#' @importFrom ggplot2 ggplot aes geom_ribbon geom_hline geom_line labs
-#'   theme_bw .data
+#' @importFrom methods new is slot setClass setGeneric setMethod
+#'   setValidity show
+#' @importFrom ggplot2 .data
 #' @keywords internal
 "_PACKAGE"
