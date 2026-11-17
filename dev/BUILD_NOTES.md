@@ -8,12 +8,14 @@ release or devel branch, as appropriate for the submission target.
 ## 0. One-time prerequisites
 
 ```r
-install.packages(c("Rcpp", "RcppArmadillo", "ggplot2",
+install.packages(c("Rcpp", "RcppArmadillo", "ggplot2", "withr",
                    "roxygen2", "devtools", "testthat", "knitr", "rmarkdown"))
 if (!requireNamespace("BiocManager", quietly = TRUE))
     install.packages("BiocManager")
 BiocManager::install(c("SummarizedExperiment", "S4Vectors", "GenomicRanges",
-                       "IRanges", "BiocStyle", "BiocCheck"))
+                       "IRanges", "BiocParallel", "BiocStyle", "BiocCheck",
+                       "SingleCellExperiment", "scuttle",
+                       "VariantAnnotation"))
 ```
 
 A C++ toolchain is required: Rtools on Windows, Xcode command line tools on
@@ -51,7 +53,7 @@ From a shell in the parent directory:
 
 ```sh
 R CMD build MRCCC
-R CMD check --as-cran --no-manual MRCCC_0.99.6.tar.gz
+R CMD check --as-cran --no-manual MRCCC_<version>.tar.gz
 ```
 
 Bioconductor does not require `--as-cran`, but its extra checks are useful.
@@ -67,7 +69,7 @@ compiled library on some platforms is acceptable.
 ## 4. BiocCheck
 
 ```r
-BiocCheck::BiocCheck("MRCCC_0.99.6.tar.gz", `new-package` = TRUE)
+BiocCheck::BiocCheck("MRCCC_<version>.tar.gz", `new-package` = TRUE)
 BiocCheck::BiocCheckGitClone(".")
 ```
 
@@ -79,9 +81,11 @@ Resolve every ERROR and WARNING. NOTEs should be reviewed individually.
   tarball larger than 5 MB).
 * No single file larger than 5 MB.
 * `R CMD check` must complete in under 10 minutes on the build machines.
-  The vignette fit uses the default chain length and the examples use
-  short chains. Together they take about 30 seconds. Re-time the check
-  after changing either.
+  The vignette fits the simulated example with the default chain length,
+  the OneK1K IL-18 triplet with four chains of 50,000 iterations and a
+  screen of four simulated triplets. It builds in about two minutes, and
+  the examples, which use short chains, take about 30 seconds. Re-time the
+  check after changing either.
 * Version `0.99.z` for a new submission. Bump `z` for every push to the
   submission branch.
 * The `biocViews` terms must be valid for the target release.
