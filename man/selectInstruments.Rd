@@ -15,7 +15,7 @@ selectInstruments(
   maxSNPs = 10L,
   r2Max = 0.8,
   minCarrierFreq = 0.05,
-  minCandidates = 5L
+  minCandidates = 1L
 )
 }
 \arguments{
@@ -108,7 +108,8 @@ S4Vectors::metadata(sel)
 }
 \references{
 Sarkar B, Ni Y (2026). MR-CCC: Bayesian Mendelian Randomization for
-Causal Cell-Cell Communication. arXiv:2604.23917.
+Causal Cell-Cell Communication. Bioinformatics (in press).
+arXiv:2604.23917.
 }
 \seealso{
 \code{\link[=buildTriplet]{buildTriplet()}}, which calls this function for the ligand and

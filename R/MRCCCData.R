@@ -30,7 +30,8 @@ NULL
 #' @param labels Optional named character vector or list with any of the
 #'   elements `ligand`, `receptor`, `pathway`, `sender` and `receiver`, used
 #'   in printed output.
-#' @param metadata Optional list of additional information.
+#' @param metadata Optional list of additional information, read back with
+#'   [S4Vectors::metadata()].
 #'
 #' @details
 #' **Donor matching.** If every component carries donor names (names of the
@@ -113,9 +114,10 @@ MRCCCData <- function(ligandExpression, receptorExpression, pathwayActivity,
     hasIds <- !vapply(ids, is.null, logical(1))
     if (all(hasIds)) {
         donorIds <- ids[[1]]
-        if (anyDuplicated(donorIds) > 0L) {
-            stop("Donor names of 'ligandExpression' are not unique.",
-                 call. = FALSE)
+        dup <- vapply(ids, anyDuplicated, integer(1)) > 0L
+        if (any(dup)) {
+            stop("Donor names are not unique in ", toString(names(ids)[dup]),
+                 ".", call. = FALSE)
         }
         for (nm in names(ids)[-1]) {
             miss <- setdiff(donorIds, ids[[nm]])
@@ -208,9 +210,11 @@ MRCCCData <- function(ligandExpression, receptorExpression, pathwayActivity,
         if (is.null(colnames(x))) {
             colnames(x) <- paste0("covariate", seq_len(ncol(x)))
         }
+        .stopIfMissingCovariates(x)
         return(x)
     }
     if (is.numeric(x) && is.null(dim(x))) {
+        .stopIfMissingCovariates(x)
         return(matrix(as.numeric(x), ncol = 1L,
                       dimnames = list(names(x), "covariate1")))
     }
@@ -252,6 +256,14 @@ MRCCCData <- function(ligandExpression, receptorExpression, pathwayActivity,
     rownames(M) <- rn
     storage.mode(M) <- "double"
     M
+}
+
+.stopIfMissingCovariates <- function(x) {
+    if (anyNA(x)) {
+        stop("'covariates' contains missing values. Impute them or remove ",
+             "the affected donors first.", call. = FALSE)
+    }
+    invisible(x)
 }
 
 .hasRealRownames <- function(df) {

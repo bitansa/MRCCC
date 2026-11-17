@@ -24,10 +24,13 @@ NULL
 #'   imputed by the SNP's mean dosage.
 #' @param ligand Name of the ligand gene (a row name of `sender`).
 #' @param receptor Name of the receptor gene (a row name of `receiver`).
-#' @param pathway Either a character vector of pathway genes, scored in
-#'   `receiver` according to `pathwayMethod`, or a numeric vector named by
-#'   donor giving a precomputed pathway activity score (for example from
-#'   AUCell, UCell or GSVA).
+#' @param pathway The pathway activity, given in one of three ways. It can
+#'   be a character vector of pathway genes, scored in `receiver` according
+#'   to `pathwayMethod`. It can be the name of a numeric column of
+#'   `colData(receiver)` that holds a precomputed score, for example from
+#'   AUCell, UCell or GSVA. It can also be a numeric vector of such a score
+#'   named by donor. A single name that is both a gene of `receiver` and a
+#'   `colData` column is read as a gene.
 #' @param covariates Character vector naming donor covariates in
 #'   `colData(receiver)` (or, failing that, `colData(sender)`), or a numeric
 #'   matrix or data frame with donors as row names. Factors and character
@@ -100,6 +103,21 @@ buildTriplet <- function(sender, receiver, genotypes, ligand, receptor,
              "in colData, such as sex or age.", call. = FALSE)
     }
 
+    # A single name of a colData column of the receiver is a precomputed
+    # pathway score stored with the donors.
+    scoreColumn <- NA_character_
+    if (is.character(pathway) && length(pathway) == 1L && !is.na(pathway) &&
+        !pathway %in% rownames(receiver) &&
+        pathway %in% colnames(SummarizedExperiment::colData(receiver))) {
+        scoreColumn <- pathway
+        values <- SummarizedExperiment::colData(receiver)[[pathway]]
+        if (!is.numeric(values)) {
+            stop("colData column '", pathway, "' of 'receiver' must be ",
+                 "numeric to serve as a pathway score.", call. = FALSE)
+        }
+        pathway <- stats::setNames(as.numeric(values), colnames(receiver))
+    }
+
     # ---- Donors shared by all three objects ----
     allIds <- list(sender = colnames(sender), receiver = colnames(receiver),
                    genotypes = colnames(genotypes))
@@ -129,12 +147,24 @@ buildTriplet <- function(sender, receiver, genotypes, ligand, receptor,
     sender <- sender[, donorIds]
     receiver <- receiver[, donorIds]
     genotypes <- genotypes[, donorIds]
+    # The covariate design is rebuilt on the retained donors, so that a
+    # factor level found only among the dropped donors leaves no empty
+    # indicator column.
+    if (is.character(covariates)) {
+        V <- .tripletCovariates(covariates, sender, receiver)
+    } else if (is.data.frame(covariates) ||
+               methods::is(covariates, "DataFrame")) {
+        V <- .covariateMatrix(covariates[donorIds, , drop = FALSE])
+    }
     V <- V[donorIds, , drop = FALSE]
 
     # ---- Exposures and outcome ----
     x <- .assayRow(sender, ligand, assay, donorIds, "sender")
     z <- .assayRow(receiver, receptor, assay, donorIds, "receiver")
     pw <- .pathwayScore(pathway, receiver, assay, donorIds, pathwayMethod)
+    if (!is.na(scoreColumn)) {
+        pw$method <- paste0("colData column '", scoreColumn, "'")
+    }
 
     # ---- Instruments ----
     selL <- .resolveInstruments(ligandSNPs, sender, ligand, genotypes, V,

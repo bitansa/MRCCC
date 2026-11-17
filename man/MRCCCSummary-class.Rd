@@ -35,14 +35,21 @@ effects.
 \section{Slots}{
 
 \describe{
-\item{\code{table}}{Data frame of standardised effects, credible intervals and
-R-hat.}
+\item{\code{table}}{Data frame with one row per effect and columns \code{parameter}
+(\code{beta_X}, \code{beta_XZ}, \code{beta_Z}), \code{mean}, \code{lower} and \code{upper} (posterior
+mean and credible interval on the standardised scale) and \code{rhat}. The
+\code{rhat} of \code{beta_Z} is \code{NA} because R-hat is computed for \code{beta_X},
+\code{beta_XZ}, \code{gamma} and the log-likelihood only.}
 
-\item{\code{diagnostics}}{Data frame of Gelman-Rubin statistics.}
+\item{\code{diagnostics}}{Data frame of Gelman-Rubin statistics, as returned by
+\code{\link[=convergence]{convergence()}}.}
 
-\item{\code{instruments}}{Data frame of first-stage instrument strength.}
+\item{\code{instruments}}{Data frame of first-stage instrument strength, as
+returned by \code{\link[=instrumentStrength]{instrumentStrength()}}.}
 
-\item{\code{info}}{List of the remaining summary values.}
+\item{\code{info}}{List with \code{title} (the triplet labels), \code{nChains}, \code{nKeep},
+\code{pip}, \code{pipMCSE}, \code{pipESS}, \code{pipThreshold} and \code{level} (the credible
+level).}
 }}
 
 \seealso{

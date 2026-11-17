@@ -42,10 +42,13 @@ imputed by the SNP's mean dosage.}
 
 \item{receptor}{Name of the receptor gene (a row name of \code{receiver}).}
 
-\item{pathway}{Either a character vector of pathway genes, scored in
-\code{receiver} according to \code{pathwayMethod}, or a numeric vector named by
-donor giving a precomputed pathway activity score (for example from
-AUCell, UCell or GSVA).}
+\item{pathway}{The pathway activity, given in one of three ways. It can
+be a character vector of pathway genes, scored in \code{receiver} according
+to \code{pathwayMethod}. It can be the name of a numeric column of
+\code{colData(receiver)} that holds a precomputed score, for example from
+AUCell, UCell or GSVA. It can also be a numeric vector of such a score
+named by donor. A single name that is both a gene of \code{receiver} and a
+\code{colData} column is read as a gene.}
 
 \item{covariates}{Character vector naming donor covariates in
 \code{colData(receiver)} (or, failing that, \code{colData(sender)}), or a numeric

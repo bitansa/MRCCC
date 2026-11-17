@@ -6,7 +6,7 @@ test_that("mrccc returns a well-formed MRCCCFit", {
     expect_true(methods::validObject(fit))
     expect_true(pip(fit) >= 0 && pip(fit) <= 1)
     expect_named(pipMCSE(fit), c("mcse", "ess"))
-    expect_equal(fit@settings$nChains, 4L)
+    expect_equal(fitSettings(fit)$nChains, 4L)
     expect_identical(tripletLabels(fit), tripletLabels(dat))
 })
 
@@ -24,7 +24,7 @@ test_that("effect sizes are reported on both scales", {
     raw <- effectSizes(fit, standardized = FALSE)
     std <- effectSizes(fit)
     expect_equal(std$parameter, c("beta_X", "beta_XZ", "beta_Z"))
-    s <- fit@scale
+    s <- inputScale(fit)
     sf <- c(s$sdX / s$sdY, s$sdX * s$sdZ / s$sdY, s$sdZ / s$sdY)
     expect_equal(std$mean, raw$mean * sf)
     dStd <- posteriorDraws(fit, standardized = TRUE)
@@ -95,7 +95,7 @@ test_that("thinning reduces the number of retained draws", {
     ft <- suppressWarnings(suppressMessages(
         mrccc(dat, nIter = 700, burnIn = 100, thin = 3, nChains = 1,
               seed = 1)))
-    expect_equal(ft@settings$nKeep, 200L)
+    expect_equal(fitSettings(ft)$nKeep, 200L)
     expect_equal(nrow(posteriorDraws(ft)), 200L)
 })
 

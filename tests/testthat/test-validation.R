@@ -13,6 +13,8 @@ test_that("MCMC settings are validated", {
     expect_error(smallFit(thin = 0), "'thin' must be an integer")
     expect_error(smallFit(nChains = 0), "'nChains' must be an integer")
     expect_error(smallFit(initScale = -1), "'initScale' must be non-negative")
+    expect_error(smallFit(initScale = 0, nChains = 2),
+                 "'initScale' must be positive when nChains > 1")
     expect_error(smallFit(nIter = 20, burnIn = 10, thin = 40), "retain only")
     expect_error(smallFit(seed = 1.5), "'seed' must be a whole number")
     expect_error(smallFit(verbose = NA), "'verbose' must be TRUE or FALSE")

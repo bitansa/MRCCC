@@ -7,8 +7,8 @@ inferring causal ligand-receptor signalling between cell types from
 population-scale single-cell expression and genotype data. For each
 ligand-receptor-pathway triplet, cis-eQTL genotypes instrument ligand
 expression in the sender cell type and receptor expression in the receiver
-cell type, and a working model with a ligand-by-receptor interaction is fitted
-to downstream pathway activity by a blocked Gibbs sampler written in
+cell type. A working model with a ligand-by-receptor interaction is then
+fitted to downstream pathway activity by a blocked Gibbs sampler written in
 RcppArmadillo. A spike-and-slab prior on the causal block yields a posterior
 inclusion probability (PIP) that serves as the communication score. The
 retained draws support credible intervals, posterior sign probabilities, the
@@ -71,10 +71,30 @@ plotEffectCurve(fit)
 bayesFDR(c(0.95, 0.80, 0.55, 0.20))
 ```
 
-`selectInstruments()` implements the instrument selection of the paper:
+A real-data example from the OneK1K cohort ships with the package, and
+many triplets can be fitted in parallel and screened with Bayesian false
+discovery rate control:
+
+```r
+ex <- onek1kExample()
+dat <- buildTriplet(ex$sender, ex$receiver, ex$genotypes,
+                    ligand = "IL18", receptor = "IL18R1",
+                    pathway = "interleukinPC1",
+                    covariates = c("sex", "ageBin", "PC1", "PC2", "PC3"))
+fit <- mrccc(dat, nIter = 50000, seed = 1,
+             BPPARAM = BiocParallel::MulticoreParam(4))
+```
+
+`mrcccScreen()` fits a list of triplets and `screenTable()` summarises them.
+The vignette, `vignette("MRCCC", package = "MRCCC")`, walks through a full
+analysis, including building the inputs from a `SingleCellExperiment` and a
+VCF file.
+
+`selectInstruments()` implements the instrument selection of the paper.
 SNPs within 200 kb of the gene's transcription start site are screened by a
 covariate-adjusted regression of the gene's expression on dosage in the same
-donors, ranked by p-value and LD-clumped (r^2 <= 0.8) to at most ten.
+donors. They are then ranked by p-value and LD-clumped (r^2 <= 0.8) to at
+most ten.
 
 ## Chain length and convergence
 
@@ -111,8 +131,8 @@ processed data used by those scripts are archived on Zenodo under DOI
 ## Citation
 
 Sarkar B, Ni Y (2026). MR-CCC: Bayesian Mendelian Randomization for Causal
-Cell-Cell Communication. arXiv:2604.23917.
-<https://arxiv.org/abs/2604.23917>
+Cell-Cell Communication. Bioinformatics, in press. Preprint:
+arXiv:2604.23917. <https://arxiv.org/abs/2604.23917>
 
 ```r
 citation("MRCCC")

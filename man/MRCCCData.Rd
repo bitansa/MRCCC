@@ -43,7 +43,8 @@ columns (treatment contrasts). At least one covariate is required.}
 elements \code{ligand}, \code{receptor}, \code{pathway}, \code{sender} and \code{receiver}, used
 in printed output.}
 
-\item{metadata}{Optional list of additional information.}
+\item{metadata}{Optional list of additional information, read back with
+\code{\link[S4Vectors:metadata]{S4Vectors::metadata()}}.}
 }
 \value{
 An \link[=MRCCCData-class]{MRCCCData} object.

@@ -67,6 +67,23 @@ setGeneric("instrumentStrength",
 #' @export
 setGeneric("posteriorDraws", function(x, ...) standardGeneric("posteriorDraws"))
 
+#' @rdname MRCCCFit-accessors
+#' @export
+setGeneric("firstStageEffects",
+           function(x) standardGeneric("firstStageEffects"))
+
+#' @rdname MRCCCFit-accessors
+#' @export
+setGeneric("posteriorMeans", function(x) standardGeneric("posteriorMeans"))
+
+#' @rdname MRCCCFit-accessors
+#' @export
+setGeneric("inputScale", function(x) standardGeneric("inputScale"))
+
+#' @rdname MRCCCFit-accessors
+#' @export
+setGeneric("fitSettings", function(x) standardGeneric("fitSettings"))
+
 # ---- Posterior summaries ---------------------------------------------------
 
 #' @rdname credibleIntervals

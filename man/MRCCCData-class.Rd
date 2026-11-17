@@ -54,8 +54,11 @@ with factors already expanded to indicator columns.}
 \code{pathway}, \code{sender} and \code{receiver} (any may be \code{NA}), used in printed
 output.}
 
-\item{\code{metadata}}{List of additional information, for example the
-instrument-selection tables recorded by \code{\link[=buildTriplet]{buildTriplet()}}.}
+\item{\code{metadata}}{List of additional information, inherited from
+\link[S4Vectors:Annotated-class]{S4Vectors::Annotated} and read with \code{\link[S4Vectors:metadata]{S4Vectors::metadata()}}.
+\code{\link[=buildTriplet]{buildTriplet()}} records there the instrument-selection tables
+(\code{ligandInstruments}, \code{receptorInstruments}), the pathway genes
+(\code{pathwayGenes}) and how the pathway was scored (\code{pathwayMethod}).}
 }}
 
 \seealso{

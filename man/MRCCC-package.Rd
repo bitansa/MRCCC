@@ -11,9 +11,9 @@ inferring causal ligand-receptor signalling between cell types from
 population-scale single-cell expression and genotype data. For each
 ligand-receptor-pathway triplet, cis-eQTL genotypes of the same donors
 instrument ligand expression in the sender cell type and receptor
-expression in the receiver cell type, and a working model with a
-ligand-by-receptor interaction is fitted to downstream pathway activity by
-a blocked Gibbs sampler. A spike-and-slab prior on the causal block yields
+expression in the receiver cell type. A working model with a
+ligand-by-receptor interaction is then fitted to downstream pathway
+activity by a blocked Gibbs sampler. A spike-and-slab prior on the causal block yields
 a posterior inclusion probability that serves as the communication score.
 }
 \section{Workflow}{
@@ -26,18 +26,26 @@ instruments with \code{\link[=selectInstruments]{selectInstruments()}}. \code{\l
 object from aligned vectors and matrices.}
 \item{\code{\link[=mrccc]{mrccc()}}}{Fit the model. Returns an \link[=MRCCCFit-class]{MRCCCFit} object.}
 \item{\link{MRCCCFit-accessors}}{\code{\link[=pip]{pip()}}, \code{\link[=effectSizes]{effectSizes()}}, \code{\link[=convergence]{convergence()}},
-\code{\link[=instrumentStrength]{instrumentStrength()}} and \code{\link[=posteriorDraws]{posteriorDraws()}}.}
+\code{\link[=instrumentStrength]{instrumentStrength()}}, \code{\link[=firstStageEffects]{firstStageEffects()}}, \code{\link[=posteriorMeans]{posteriorMeans()}},
+\code{\link[=posteriorDraws]{posteriorDraws()}}, \code{\link[=inputScale]{inputScale()}} and \code{\link[=fitSettings]{fitSettings()}}.}
 \item{Posterior summaries}{\code{\link[=credibleIntervals]{credibleIntervals()}},
 \code{\link[=signProbabilities]{signProbabilities()}}, \code{\link[=signReversal]{signReversal()}} and \code{\link[=plotEffectCurve]{plotEffectCurve()}}.}
+\item{\code{\link[=mrcccScreen]{mrcccScreen()}}, \code{\link[=screenTable]{screenTable()}}}{Fit many triplets, in
+parallel through BiocParallel, and summarise them.}
 \item{\code{\link[=bayesFDR]{bayesFDR()}}, \code{\link[=bfdrSelect]{bfdrSelect()}}}{Bayesian false discovery rate
 control across many triplets.}
+\item{\code{\link[=onek1kExample]{onek1kExample()}}}{A real-data example from the OneK1K cohort.}
 \item{\code{\link[=simulateMRCCC]{simulateMRCCC()}}}{Simulated data in the layout of real data.}
 }
+
+A worked analysis, on simulated and real data, is in
+\code{vignette("MRCCC", package = "MRCCC")}.
 }
 
 \references{
 Sarkar B, Ni Y (2026). MR-CCC: Bayesian Mendelian Randomization for
-Causal Cell-Cell Communication. arXiv:2604.23917.
+Causal Cell-Cell Communication. Bioinformatics (in press).
+arXiv:2604.23917.
 }
 \seealso{
 Useful links:
@@ -53,7 +61,12 @@ Useful links:
 Authors:
 \itemize{
   \item Bitan Sarkar \email{bitansarkar010899@gmail.com} (\href{https://orcid.org/0009-0000-5178-5934}{ORCID})
-  \item Yang Ni (\href{https://orcid.org/0000-0003-0636-2363}{ORCID}) [funder]
+  \item Yang Ni (\href{https://orcid.org/0000-0003-0636-2363}{ORCID})
+}
+
+Other contributors:
+\itemize{
+  \item National Institutes of Health (Grants R01GM148974 and R01GM163238) [funder]
 }
 
 }

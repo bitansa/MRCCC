@@ -30,12 +30,25 @@ test_that("credibleIntervals are ordered and respect the scale", {
     expect_equal(ci$parameter, c("beta_X", "beta_XZ", "beta_Z"))
     expect_true(all(ci$lower <= ci$median & ci$median <= ci$upper))
     ciRaw <- credibleIntervals(fit, standardized = FALSE)
-    s <- fit@scale
+    s <- inputScale(fit)
     sf <- c(s$sdX / s$sdY, s$sdX * s$sdZ / s$sdY, s$sdZ / s$sdY)
     expect_equal(ci$median, ciRaw$median * sf)
     ci90 <- credibleIntervals(fit, level = 0.9)
     expect_true(all(ci90$lower >= ci$lower & ci90$upper <= ci$upper))
     expect_error(credibleIntervals(fit, level = 1), "'level' must lie")
+})
+
+test_that("credibleIntervals can condition on inclusion", {
+    d <- posteriorDraws(fit)
+    inc <- d$gamma == 1
+    skip_if_not(any(inc))
+    ciInc <- credibleIntervals(fit, standardized = FALSE, included = TRUE)
+    expect_equal(ciInc$median[ciInc$parameter == "beta_XZ"],
+                 stats::median(d$beta_XZ[inc]))
+    expect_true(all(ciInc$lower <= ciInc$median &
+                        ciInc$median <= ciInc$upper))
+    expect_error(credibleIntervals(fit, included = NA),
+                 "'included' must be TRUE or FALSE")
 })
 
 test_that("signProbabilities returns valid probabilities", {
@@ -55,7 +68,7 @@ test_that("signReversal uses paired draws on the standardised scale", {
     expect_true(sr$tauLower <= sr$tauMedian && sr$tauMedian <= sr$tauUpper)
     expect_true(sr$pInRange >= 0 && sr$pInRange <= 1)
     d <- posteriorDraws(fit)
-    s <- fit@scale
+    s <- inputScale(fit)
     ok <- abs(d$beta_XZ * s$sdX * s$sdZ / s$sdY) > 1e-8
     tau <- (-d$beta_X[ok] / d$beta_XZ[ok]) / s$sdZ
     expect_equal(sr$tauMedian, stats::median(tau))
@@ -77,5 +90,6 @@ test_that("mrcccHyperparameters validates its inputs", {
     expect_error(mrcccHyperparameters(aRho = 0),
                  "'aRho' and 'bRho' must be positive")
     expect_error(mrcccHyperparameters(g = -1), "'g' must be positive")
-    expect_error(mrcccHyperparameters(ridge = -1e-8), "non-negative")
+    expect_error(mrcccHyperparameters(ridge = -1e-8), "must be positive")
+    expect_error(mrcccHyperparameters(ridge = 0), "must be positive")
 })

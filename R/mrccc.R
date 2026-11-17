@@ -27,34 +27,43 @@ NULL
 #'   burn-in, which is the only extra cost.
 #' @param initScale Standard deviation of the normal distribution from which
 #'   \eqn{\beta_X} and \eqn{\beta_{XZ}} are initialised, on the centred
-#'   input scale, when `nChains > 1`. The default 1 gives standard normal
-#'   starting values. With a single chain the sampler starts at zero.
+#'   input scale, when `nChains > 1`. It must then be positive, so that the
+#'   chains start from different values. The default 1 gives standard normal
+#'   starting values. With a single chain both effects start at zero.
 #' @param pipThreshold Threshold in \eqn{(0, 1)} that defines a discovery
 #'   (`PIP > pipThreshold`). The default of 0.5 corresponds to the median
 #'   probability model. Used for the borderline warning and by
 #'   [summary()][summary,MRCCCFit-method].
 #' @param hyper Prior hyperparameters, as returned by
 #'   [mrcccHyperparameters()].
-#' @param seed Optional integer. If supplied, the chains are run under this
-#'   seed, which makes the whole multi-chain fit reproducible, and the
-#'   caller's random number state is restored afterwards.
+#' @param seed Optional integer. If supplied, the fit is reproducible: one
+#'   seed per chain is derived from it, each chain runs under its own seed
+#'   wherever it is evaluated, and the caller's random number state is
+#'   restored afterwards. With the default `NULL`, the per-chain seeds are
+#'   drawn from the current random number stream, so calling [set.seed()]
+#'   beforehand also makes the fit reproducible.
 #' @param verbose Logical. If `TRUE`, each chain prints a progress line every
 #'   1000 iterations.
+#' @param BPPARAM A [BiocParallel::BiocParallelParam-class] object that
+#'   controls how the chains are run. The default
+#'   [BiocParallel::SerialParam()] runs them one after another. For example,
+#'   `BiocParallel::MulticoreParam(4)` runs four chains at once. Because each
+#'   chain has its own seed, the result does not depend on the back end.
 #' @param ... Not used.
 #'
 #' @details
 #' **Model.** For donor \eqn{i}, with \eqn{X^* = E[X \mid G, V]} and
 #' \eqn{Z^* = E[Z \mid H, V]} the genetically predicted ligand and receptor
 #' levels, the outcome model is
-#' \deqn{Y = \mu + \gamma(\beta_X X^* + \beta_{XZ} X^* Z^*) + \beta_Z Z^*
+#' \deqn{Y = \mu + \beta_X X^* + \beta_Z Z^* + \beta_{XZ} X^* Z^*
 #'   + \alpha_Y^\top V + \tilde\varepsilon_Y,}
 #' where \eqn{X} is ligand expression, \eqn{Z} receptor expression, \eqn{Y}
-#' pathway activity, \eqn{G} and \eqn{H} the instrument dosages, \eqn{V} the
-#' covariates, and \eqn{\gamma \in \{0, 1\}} a spike-and-slab inclusion
-#' indicator for the causal block \eqn{(\beta_X, \beta_{XZ})}. Under
-#' \eqn{\gamma = 0} the prior variance of that block is multiplied by `nu1`
-#' (\eqn{10^{-4}} by default), so the coefficients are concentrated tightly
-#' at zero. The PIP \eqn{P(\gamma = 1 \mid \mathrm{data})} is the
+#' pathway activity, \eqn{G} and \eqn{H} the instrument dosages and \eqn{V}
+#' the covariates. The causal block \eqn{(\beta_X, \beta_{XZ})} has a
+#' spike-and-slab prior with inclusion indicator
+#' \eqn{\gamma \in \{0, 1\}}. Under \eqn{\gamma = 0} the prior variance of
+#' the block is multiplied by `nu1` (\eqn{10^{-4}} by default), so the
+#' coefficients are concentrated tightly at zero. The PIP \eqn{P(\gamma = 1 \mid \mathrm{data})} is the
 #' communication score. The receptor-modulated ligand effect is
 #' \eqn{\beta_X + \beta_{XZ} z}, which changes sign at
 #' \eqn{\tau = -\beta_X / \beta_{XZ}}. See [signReversal()].
@@ -91,6 +100,14 @@ NULL
 #' chains. The default chain length is a starting point. Reported analyses
 #' should use chains long enough that neither warning is issued.
 #'
+#' **Which R-hat.** \eqn{\hat R} is the classic Gelman-Rubin potential scale
+#' reduction factor (Gelman and Rubin, 1992), without the correction for
+#' sampling variability, which is the statistic defined and reported in the
+#' paper. The threshold 1.01 is the one recommended for the rank-normalised
+#' split \eqn{\hat R} of Vehtari et al. (2021). For the classic statistic,
+#' the conventional threshold is 1.1, so the check here is stricter than
+#' usual and errs on the side of longer chains.
+#'
 #' **Settings used in the paper.** The real-data analysis ran four chains of
 #' 100,000 iterations per triplet with a burn-in of 2,000. The simulation
 #' studies ran one chain per fit, of 20,000 iterations when the instruments
@@ -103,11 +120,19 @@ NULL
 #'
 #' @seealso [buildTriplet()], [MRCCCFit-accessors], [credibleIntervals()],
 #'   [signProbabilities()], [signReversal()], [plotEffectCurve()],
-#'   [bayesFDR()]
+#'   [mrcccScreen()], [bayesFDR()]
 #'
 #' @references
 #' Sarkar B, Ni Y (2026). MR-CCC: Bayesian Mendelian Randomization for
-#' Causal Cell-Cell Communication. arXiv:2604.23917.
+#' Causal Cell-Cell Communication. Bioinformatics (in press).
+#' arXiv:2604.23917.
+#'
+#' Gelman A, Rubin DB (1992). Inference from iterative simulation using
+#' multiple sequences. Statistical Science 7(4):457-472.
+#'
+#' Vehtari A, Gelman A, Simpson D, Carpenter B, Burkner P-C (2021).
+#' Rank-normalization, folding, and localization: an improved R-hat for
+#' assessing convergence of MCMC. Bayesian Analysis 16(2):667-718.
 #'
 #' @examples
 #' sim <- simulateMRCCC(n = 200, seed = 1)
@@ -126,47 +151,82 @@ setMethod("mrccc", "MRCCCData",
     function(x, nIter = 20000L, burnIn = 2000L, thin = 1L, nChains = 4L,
              initScale = 1, pipThreshold = 0.5,
              hyper = mrcccHyperparameters(), seed = NULL, verbose = FALSE,
-             ...) {
+             BPPARAM = BiocParallel::SerialParam(), ...) {
     .fitMRCCC(
         X = x@ligandExpression, Z = x@receptorExpression,
         Y = x@pathwayActivity, G = x@ligandGenotypes,
         H = x@receptorGenotypes, V = x@covariates,
         nIter = nIter, burnIn = burnIn, thin = thin, nChains = nChains,
         initScale = initScale, pipThreshold = pipThreshold, hyper = hyper,
-        seed = seed, verbose = verbose, labels = x@labels)
+        seed = seed, verbose = verbose, BPPARAM = BPPARAM,
+        labels = x@labels)
 })
 
 # The fitting engine. Arguments are numeric vectors (X, Z, Y) and matrices
 # (G, H, V) already aligned by donor, as guaranteed by the MRCCCData validity
-# method.
+# method. Each step is a small helper below.
 .fitMRCCC <- function(X, Z, Y, G, H, V, nIter, burnIn, thin, nChains,
                       initScale, pipThreshold, hyper, seed, verbose,
+                      BPPARAM = BiocParallel::SerialParam(),
                       labels = .makeLabels(NULL)) {
-    X <- as_column(X, "ligandExpression")
-    Z <- as_column(Z, "receptorExpression")
-    Y <- as_column(Y, "pathwayActivity")
-    G <- as_design(G, "ligandGenotypes")
-    H <- as_design(H, "receptorGenotypes")
-    V <- as_design(V, "covariates")
-    n <- nrow(X)
+    colNames <- list(ligand = colnames(G), receptor = colnames(H),
+                     covariates = colnames(V))
+    inp <- .prepareInputs(X, Z, Y, G, H, V)
+    set <- .checkFitArgs(nIter, burnIn, thin, nChains, initScale,
+                         pipThreshold, hyper, seed, verbose, BPPARAM)
+    cen <- .centreInputs(inp)
+    instruments <- .instrumentStrength(cen)
+    gVal <- if (is.null(hyper$g)) min(nrow(inp$X), 100) else hyper$g
+    fits <- .runChains(cen, set, hyper, gVal, seed, BPPARAM)
+    pooled <- .poolChains(fits, set$nChains)
+    .convergenceMessages(pooled, set)
 
-    check_design(G, "ligandGenotypes")
-    check_design(H, "receptorGenotypes")
-    check_design(V, "covariates")
-    p_total <- ncol(G) + ncol(H) + ncol(V)
-    if (n <= p_total + 4L) {
+    methods::new("MRCCCFit",
+        pip = pooled$pip, pipMCSE = pooled$mcse, pipESS = pooled$ess,
+        draws = pooled$draws,
+        scale = cen$scale,
+        diagnostics = pooled$diagnostics,
+        instruments = instruments,
+        firstStage = .firstStageSummary(fits, colNames),
+        posteriorMeans = .posteriorMeansSummary(fits, colNames),
+        settings = list(nIter = set$nIter, burnIn = set$burnIn,
+                        thin = set$thin, nChains = set$nChains,
+                        nKeep = pooled$nKeep,
+                        pipThreshold = set$pipThreshold, hyper = hyper,
+                        g = gVal, initScale = set$initScale,
+                        priorScale = fits[[1L]]$prior_scale),
+        labels = labels)
+}
+
+# Coerce the inputs and check that the designs can be fitted.
+.prepareInputs <- function(X, Z, Y, G, H, V) {
+    inp <- list(X = as_column(X, "ligandExpression"),
+                Z = as_column(Z, "receptorExpression"),
+                Y = as_column(Y, "pathwayActivity"),
+                G = as_design(G, "ligandGenotypes"),
+                H = as_design(H, "receptorGenotypes"),
+                V = as_design(V, "covariates"))
+    check_design(inp$G, "ligandGenotypes")
+    check_design(inp$H, "receptorGenotypes")
+    check_design(inp$V, "covariates")
+    n <- nrow(inp$X)
+    pTotal <- ncol(inp$G) + ncol(inp$H) + ncol(inp$V)
+    if (n <= pTotal + 4L) {
         stop("Too few donors for the model: ", n, " donors against ",
-             p_total, " instrument and covariate columns plus four ",
+             pTotal, " instrument and covariate columns plus four ",
              "second-stage coefficients. Supply more donors or fewer ",
              "instruments.", call. = FALSE)
     }
+    inp
+}
 
-    check_scalar(nIter, "nIter")
-    check_scalar(burnIn, "burnIn")
-    check_scalar(thin, "thin")
-    check_scalar(nChains, "nChains")
-    check_scalar(initScale, "initScale")
-    check_scalar(pipThreshold, "pipThreshold")
+# Validate the sampler settings and return them as integers.
+.checkFitArgs <- function(nIter, burnIn, thin, nChains, initScale,
+                          pipThreshold, hyper, seed, verbose, BPPARAM) {
+    for (nm in c("nIter", "burnIn", "thin", "nChains", "initScale",
+                 "pipThreshold")) {
+        check_scalar(get(nm), nm)
+    }
     if (nIter != round(nIter) || nIter < 1) {
         stop("'nIter' must be a positive integer.", call. = FALSE)
     }
@@ -188,6 +248,10 @@ setMethod("mrccc", "MRCCCData",
     if (initScale < 0) {
         stop("'initScale' must be non-negative.", call. = FALSE)
     }
+    if (nChains > 1 && initScale == 0) {
+        stop("'initScale' must be positive when nChains > 1, so that the ",
+             "chains start from different values.", call. = FALSE)
+    }
     if (pipThreshold <= 0 || pipThreshold >= 1) {
         stop("'pipThreshold' must lie strictly between 0 and 1.",
              call. = FALSE)
@@ -201,9 +265,14 @@ setMethod("mrccc", "MRCCCData",
     }
     if (!is.null(seed)) {
         check_scalar(seed, "seed")
-        if (seed != round(seed)) {
-            stop("'seed' must be a whole number.", call. = FALSE)
+        if (seed != round(seed) || abs(seed) > .Machine$integer.max) {
+            stop("'seed' must be a whole number no larger in absolute value ",
+                 "than .Machine$integer.max.", call. = FALSE)
         }
+    }
+    if (!methods::is(BPPARAM, "BiocParallelParam")) {
+        stop("'BPPARAM' must be a BiocParallelParam object, for example ",
+             "BiocParallel::SerialParam().", call. = FALSE)
     }
     nKeepExpected <- (nIter - burnIn) %/% thin
     if (nKeepExpected < 2L) {
@@ -212,39 +281,44 @@ setMethod("mrccc", "MRCCCData",
              " draw(s) per chain. At least two are required.",
              call. = FALSE)
     }
-    nIter <- as.integer(nIter)
-    burnIn <- as.integer(burnIn)
-    thin <- as.integer(thin)
-    nChains <- as.integer(nChains)
+    list(nIter = as.integer(nIter), burnIn = as.integer(burnIn),
+         thin = as.integer(thin), nChains = as.integer(nChains),
+         initScale = initScale, pipThreshold = pipThreshold,
+         verbose = verbose)
+}
 
-    # ---- Centring and scale ----
-    sdX <- stats::sd(X[, 1L])
-    sdZ <- stats::sd(Z[, 1L])
-    sdY <- stats::sd(Y[, 1L])
-    if (any(!is.finite(c(sdX, sdZ, sdY))) || any(c(sdX, sdZ, sdY) <= 0)) {
+# Centre every input (neither first stage has an intercept) and record the
+# scale used for standardised effects.
+.centreInputs <- function(inp) {
+    sds <- vapply(inp[c("X", "Z", "Y")], function(m) stats::sd(m[, 1L]),
+                  numeric(1))
+    if (any(!is.finite(sds)) || any(sds <= 0)) {
         stop("Ligand expression, receptor expression and pathway activity ",
              "must each vary across donors.", call. = FALSE)
     }
-    meanX <- mean(X[, 1L])
-    meanZ <- mean(Z[, 1L])
-    meanY <- mean(Y[, 1L])
-    Xc <- X - meanX
-    Zc <- Z - meanZ
-    Yc <- Y - meanY
-    zRangeStd <- range(Zc[, 1L] / sdZ)
-    Gc <- center_columns(G)
-    Hc <- center_columns(H)
-    Vc <- center_columns(V)
-    check_rank(cbind(Gc, Vc), "ligand instruments and covariates")
-    check_rank(cbind(Hc, Vc), "receptor instruments and covariates")
+    means <- vapply(inp[c("X", "Z", "Y")], function(m) mean(m[, 1L]),
+                    numeric(1))
+    out <- list(X = inp$X - means[["X"]], Z = inp$Z - means[["Z"]],
+                Y = inp$Y - means[["Y"]], G = center_columns(inp$G),
+                H = center_columns(inp$H), V = center_columns(inp$V),
+                Graw = inp$G, Hraw = inp$H, Vraw = inp$V)
+    check_rank(cbind(out$G, out$V), "ligand instruments and covariates")
+    check_rank(cbind(out$H, out$V), "receptor instruments and covariates")
+    out$scale <- list(sdX = sds[["X"]], sdZ = sds[["Z"]], sdY = sds[["Y"]],
+                      meanX = means[["X"]], meanZ = means[["Z"]],
+                      meanY = means[["Y"]],
+                      zRangeStd = range(out$Z[, 1L] / sds[["Z"]]))
+    out
+}
 
-    # ---- Instrument strength ----
+# First-stage partial F statistics, with a message for weak instruments.
+.instrumentStrength <- function(cen) {
     instruments <- data.frame(
         exposure = c("ligand", "receptor"),
-        nInstruments = c(ncol(G), ncol(H)),
-        F = c(first_stage_F(Xc[, 1L], G, V), first_stage_F(Zc[, 1L], H, V)),
-        stringsAsFactors = FALSE
-    )
+        nInstruments = c(ncol(cen$G), ncol(cen$H)),
+        F = c(first_stage_F(cen$X[, 1L], cen$Graw, cen$Vraw),
+              first_stage_F(cen$Z[, 1L], cen$Hraw, cen$Vraw)),
+        stringsAsFactors = FALSE)
     instruments$weak <- is.finite(instruments$F) & instruments$F < 10
     if (any(instruments$weak)) {
         wk <- instruments[instruments$weak, , drop = FALSE]
@@ -257,106 +331,164 @@ setMethod("mrccc", "MRCCCData",
                 "inclusion probabilities are less decisive in this regime ",
                 "and longer chains may be needed. See instrumentStrength().")
     }
+    instruments
+}
 
-    gVal <- if (is.null(hyper$g)) min(n, 100) else hyper$g
-    initRaw <- if (nChains > 1L) initScale else 0
+# One seed per chain, derived from 'seed' or drawn from the current stream.
+.chainSeeds <- function(nChains, seed) {
+    draw <- function() sample.int(.Machine$integer.max, nChains)
+    if (is.null(seed)) {
+        draw()
+    } else {
+        withr::with_seed(as.integer(seed), draw(),
+                         .rng_kind = "Mersenne-Twister",
+                         .rng_normal_kind = "Inversion",
+                         .rng_sample_kind = "Rejection")
+    }
+}
 
-    # ---- Run the chains ----
-    if (!is.null(seed)) withr::local_seed(as.integer(seed))
-    fits <- vector("list", nChains)
-    for (cc in seq_len(nChains)) {
-        fits[[cc]] <- mr_ccc_gibbs(
-            Xc, Zc, Yc, Gc, Hc, Vc,
-            n_iter = nIter, burn_in = burnIn, thin = thin,
+# Run the chains, each under its own seed, through BiocParallel.
+.runChains <- function(cen, set, hyper, gVal, seed, BPPARAM) {
+    seeds <- .chainSeeds(set$nChains, seed)
+    initRaw <- if (set$nChains > 1L) set$initScale else 0
+    runOne <- function(cc) {
+        withr::with_seed(seeds[[cc]], .rng_kind = "Mersenne-Twister",
+                         .rng_normal_kind = "Inversion",
+                         .rng_sample_kind = "Rejection", mr_ccc_gibbs(
+            cen$X, cen$Z, cen$Y, cen$G, cen$H, cen$V,
+            n_iter = set$nIter, burn_in = set$burnIn, thin = set$thin,
             a_sigma = hyper$aSigma, b_sigma = hyper$bSigma,
             a_rho = hyper$aRho, b_rho = hyper$bRho, nu1 = hyper$nu1,
             gG = gVal, gV = gVal, gH = gVal, gZ = gVal, gBeta = gVal,
             ridge = hyper$ridge,
             init_gamma = if (cc %% 2L == 0L) 0L else 1L,
-            init_scale = initRaw, verbose = verbose)
+            init_scale = initRaw, verbose = set$verbose,
+            save_first_stage = TRUE))
     }
-    nKeep <- as.integer(fits[[1L]]$n_keep)
+    # The caller's random number state is left as it was, whatever the back
+    # end does with the stream.
+    withr::with_preserve_seed(
+        BiocParallel::bplapply(seq_len(set$nChains), runOne,
+                               BPPARAM = BPPARAM))
+}
 
+# Pool the retained draws and compute the PIP, its Monte Carlo error and the
+# Gelman-Rubin statistics.
+.poolChains <- function(fits, nChains) {
+    nKeep <- as.integer(fits[[1L]]$n_keep)
     chainOf <- function(name) lapply(fits, function(f) as.numeric(f[[name]]))
-    bXch <- chainOf("Beta_X_draws")
-    bXZch <- chainOf("Beta_XZ_draws")
-    gch <- chainOf("gamma_draws")
-    llch <- chainOf("loglik_draws")
+    ch <- list(beta_X = chainOf("Beta_X_draws"),
+               beta_XZ = chainOf("Beta_XZ_draws"),
+               gamma = chainOf("gamma_draws"),
+               loglik = chainOf("loglik_draws"))
     draws <- data.frame(
         chain = rep(seq_len(nChains), each = nKeep),
-        beta_X = unlist(bXch, use.names = FALSE),
-        beta_XZ = unlist(bXZch, use.names = FALSE),
+        beta_X = unlist(ch$beta_X, use.names = FALSE),
+        beta_XZ = unlist(ch$beta_XZ, use.names = FALSE),
         beta_Z = unlist(chainOf("Beta_Z_draws"), use.names = FALSE),
-        gamma = unlist(gch, use.names = FALSE),
+        gamma = unlist(ch$gamma, use.names = FALSE),
         mu = unlist(chainOf("mu_draws"), use.names = FALSE),
-        loglik = unlist(llch, use.names = FALSE)
-    )
+        loglik = unlist(ch$loglik, use.names = FALSE))
+    mc <- mcse_pooled(lapply(ch$gamma, mcse_batch))
+    rhat <- if (nChains >= 2L) {
+        vapply(ch, gelman_rubin, numeric(1))
+    } else {
+        rep(NA_real_, length(ch))
+    }
+    list(draws = draws, nKeep = nKeep, nChains = nChains,
+         pip = mean(draws$gamma), mcse = unname(mc[["mcse"]]),
+         ess = unname(mc[["ess"]]),
+         constantGamma = length(unique(draws$gamma)) == 1L,
+         diagnostics = data.frame(parameter = names(ch), rhat = unname(rhat),
+                                  stringsAsFactors = FALSE))
+}
 
-    pipVal <- mean(draws$gamma)
-    mc <- mcse_pooled(lapply(gch, mcse_batch))
-    pipMcse <- unname(mc[["mcse"]])
-    pipEss <- unname(mc[["ess"]])
-
-    diagPars <- c("beta_X", "beta_XZ", "gamma", "loglik")
-    diagnostics <- data.frame(
-        parameter = diagPars,
-        rhat = if (nChains >= 2L) {
-            vapply(list(bXch, bXZch, gch, llch), gelman_rubin, numeric(1))
-        } else {
-            rep(NA_real_, length(diagPars))
-        },
-        stringsAsFactors = FALSE
-    )
-
-    rh <- diagnostics$rhat
+# Warnings and messages about convergence and Monte Carlo error.
+.convergenceMessages <- function(pooled, set) {
+    rh <- pooled$diagnostics$rhat
     bad <- !is.na(rh) & (is.infinite(rh) | rh > 1.01)
     if (any(bad)) {
         warning("Gelman-Rubin R-hat exceeds 1.01 for ",
-                toString(diagnostics$parameter[bad]),
-                ": the chains have not mixed. Increase 'nIter' and 'burnIn'.",
+                toString(pooled$diagnostics$parameter[bad]),
+                ": the chains may not have mixed. Increase 'nIter' and ",
+                "'burnIn'.",
                 call. = FALSE)
     }
-    if (nChains == 1L) {
+    if (pooled$nChains == 1L) {
         message("Only one chain was run, so R-hat is unavailable. Use ",
                 "nChains >= 2 to assess convergence.")
     }
     # When every chain holds the indicator at the same value throughout, the
     # PIP is 0 or 1 with no observed Monte Carlo variation and the MCSE is
     # reported as NA without comment.
-    constantGamma <- length(unique(draws$gamma)) == 1L
-    if (!is.finite(pipMcse) && !constantGamma) {
+    if (!is.finite(pooled$mcse) && !pooled$constantGamma) {
         message("The Monte Carlo uncertainty of the PIP could not be ",
                 "estimated (too few retained draws per chain, or a constant ",
                 "indicator chain), so the borderline check was skipped.")
     }
-    if (is.finite(pipMcse) && abs(pipVal - pipThreshold) < 2 * pipMcse) {
-        suggestion <- if (nIter < 100000L) {
-            paste("Increase 'nIter' to 100000, or to 400000 if the PIP",
-                  "remains borderline")
-        } else if (nIter < 400000L) {
-            "Increase 'nIter' to 400000"
+    if (is.finite(pooled$mcse) &&
+        abs(pooled$pip - set$pipThreshold) < 2 * pooled$mcse) {
+        # The paper pools about 400,000 draws per triplet: four chains of
+        # 100,000 iterations, or one chain of 400,000.
+        target <- as.integer(ceiling(400000 / pooled$nChains / 1000) * 1000)
+        suggestion <- if (set$nIter < target) {
+            paste0("Increase 'nIter' to ", target, ", so that the ",
+                   pooled$nChains, " chain(s) pool about 400000 draws as ",
+                   "in the paper")
         } else {
             paste("Increase 'nChains', which pools additional draws at",
                   "proportional cost")
         }
-        warning("The posterior inclusion probability (", fmt(pipVal),
-                ") lies within 2 * MCSE (MCSE = ", fmt(pipMcse),
-                ") of the discovery threshold (", pipThreshold,
+        warning("The posterior inclusion probability (", fmt(pooled$pip),
+                ") lies within 2 * MCSE (MCSE = ", fmt(pooled$mcse),
+                ") of the discovery threshold (", set$pipThreshold,
                 "): the discovery status of this triplet is not resolved at ",
                 "this chain length. ", suggestion, ".", call. = FALSE)
     }
+    invisible(NULL)
+}
 
-    methods::new("MRCCCFit",
-        pip = pipVal, pipMCSE = pipMcse, pipESS = pipEss,
-        draws = draws,
-        scale = list(sdX = sdX, sdZ = sdZ, sdY = sdY, meanX = meanX,
-                     meanZ = meanZ, meanY = meanY, zRangeStd = zRangeStd),
-        diagnostics = diagnostics,
-        instruments = instruments,
-        settings = list(nIter = nIter, burnIn = burnIn, thin = thin,
-                        nChains = nChains, nKeep = nKeep,
-                        pipThreshold = pipThreshold, hyper = hyper,
-                        g = gVal, initScale = initScale,
-                        priorScale = fits[[1L]]$prior_scale),
-        labels = labels)
+# Posterior mean and 95% interval of each instrument's first-stage effect,
+# pooled over chains.
+.firstStageSummary <- function(fits, colNames) {
+    one <- function(field, snps, exposure) {
+        D <- do.call(rbind, lapply(fits, function(f) {
+            as.matrix(f[[field]])
+        }))
+        data.frame(
+            exposure = exposure,
+            snp = if (is.null(snps)) {
+                paste0(exposure, "SNP", seq_len(ncol(D)))
+            } else {
+                snps
+            },
+            mean = colMeans(D),
+            lower = apply(D, 2L, stats::quantile, probs = 0.025,
+                          names = FALSE),
+            upper = apply(D, 2L, stats::quantile, probs = 0.975,
+                          names = FALSE),
+            row.names = NULL, stringsAsFactors = FALSE)
+    }
+    rbind(one("Pi_X_draws", colNames$ligand, "ligand"),
+          one("Pi_Z_draws", colNames$receptor, "receptor"))
+}
+
+# Posterior means of the nuisance parameters, averaged over chains.
+.posteriorMeansSummary <- function(fits, colNames) {
+    avg <- function(field) {
+        Reduce(`+`, lapply(fits, function(f) as.numeric(f[[field]]))) /
+            length(fits)
+    }
+    cov <- colNames$covariates
+    if (is.null(cov)) cov <- paste0("covariate", seq_along(avg("Alpha_Y_mean")))
+    list(
+        covariateEffects = data.frame(
+            covariate = cov, ligand = avg("Alpha_X_mean"),
+            receptor = avg("Alpha_Z_mean"), pathway = avg("Alpha_Y_mean"),
+            row.names = NULL, stringsAsFactors = FALSE),
+        residualVariances = c(ligand = avg("sigma_X_sq_mean"),
+                              receptor = avg("sigma_Z_sq_mean"),
+                              pathway = avg("sigma_Y_sq_mean")),
+        inclusionProbabilityPrior = avg("rho_mean"),
+        intercept = avg("mu_mean"))
 }

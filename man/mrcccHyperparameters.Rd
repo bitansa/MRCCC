@@ -32,8 +32,8 @@ effects, receptor main effect, and the causal block). If \code{NULL} (the
 default), \code{\link[=mrccc]{mrccc()}} sets \eqn{g = \min(n, 100)}, where \eqn{n} is the
 number of donors. A positive number overrides this rule.}
 
-\item{ridge}{Non-negative diagonal ridge added before every matrix
-inversion for numerical stability.}
+\item{ridge}{Positive diagonal ridge added before every matrix inversion
+for numerical stability.}
 }
 \value{
 A named list of class \code{mrcccHyperparameters} with elements
@@ -65,7 +65,9 @@ uses scale \eqn{g} in the slab and \eqn{\nu_1 g} in the spike.
 hyper <- mrcccHyperparameters()
 str(hyper)
 
-# A more diffuse slab and a fixed g-prior scale
+# A wider spike (less strict shrinkage under gamma = 0) and a fixed
+# g-prior scale of 50, which narrows the slab when there are more than
+# 50 donors
 mrcccHyperparameters(nu1 = 1e-3, g = 50)
 
 }

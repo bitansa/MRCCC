@@ -7,6 +7,10 @@
 \alias{convergence}
 \alias{instrumentStrength}
 \alias{posteriorDraws}
+\alias{firstStageEffects}
+\alias{posteriorMeans}
+\alias{inputScale}
+\alias{fitSettings}
 \alias{MRCCCFit-accessors}
 \alias{pip,MRCCCFit-method}
 \alias{pipMCSE,MRCCCFit-method}
@@ -15,6 +19,10 @@
 \alias{instrumentStrength,MRCCCFit-method}
 \alias{posteriorDraws,MRCCCFit-method}
 \alias{tripletLabels,MRCCCFit-method}
+\alias{firstStageEffects,MRCCCFit-method}
+\alias{posteriorMeans,MRCCCFit-method}
+\alias{inputScale,MRCCCFit-method}
+\alias{fitSettings,MRCCCFit-method}
 \title{Accessors for MRCCCFit objects}
 \usage{
 pip(x)
@@ -29,6 +37,14 @@ instrumentStrength(x)
 
 posteriorDraws(x, ...)
 
+firstStageEffects(x)
+
+posteriorMeans(x)
+
+inputScale(x)
+
+fitSettings(x)
+
 \S4method{pip}{MRCCCFit}(x)
 
 \S4method{pipMCSE}{MRCCCFit}(x)
@@ -42,6 +58,14 @@ posteriorDraws(x, ...)
 \S4method{posteriorDraws}{MRCCCFit}(x, standardized = FALSE, ...)
 
 \S4method{tripletLabels}{MRCCCFit}(x)
+
+\S4method{firstStageEffects}{MRCCCFit}(x)
+
+\S4method{posteriorMeans}{MRCCCFit}(x)
+
+\S4method{inputScale}{MRCCCFit}(x)
+
+\S4method{fitSettings}{MRCCCFit}(x)
 }
 \arguments{
 \item{x}{An \link[=MRCCCFit-class]{MRCCCFit} object returned by \code{\link[=mrccc]{mrccc()}}.}
@@ -72,6 +96,21 @@ partial F statistic after the covariates) and \code{weak} (\code{F < 10}).
 columns \code{chain}, \code{beta_X}, \code{beta_XZ}, \code{beta_Z}, \code{gamma}, \code{mu} and
 \code{loglik}. With \code{standardized = TRUE} the three coefficients are
 rescaled.
+\item \code{firstStageEffects()}: a data frame with one row per instrument and
+columns \code{exposure} (\code{ligand} or \code{receptor}), \code{snp}, \code{mean}, \code{lower} and
+\code{upper}: the posterior mean and 95\% credible interval of the effect of
+one copy of the alternative allele on expression.
+\item \code{posteriorMeans()}: a list with the posterior means of the remaining
+parameters: \code{covariateEffects} (data frame with columns \code{covariate},
+\code{ligand}, \code{receptor} and \code{pathway}), \code{residualVariances},
+\code{inclusionProbabilityPrior} and \code{intercept}.
+\item \code{inputScale()}: a list with the standard deviations (\code{sdX}, \code{sdZ},
+\code{sdY}) and means (\code{meanX}, \code{meanZ}, \code{meanY}) of ligand expression,
+receptor expression and pathway activity, and the observed receptor
+range in standard deviations from its mean (\code{zRangeStd}).
+\item \code{fitSettings()}: a list of the run settings (\code{nIter}, \code{burnIn},
+\code{thin}, \code{nChains}, \code{nKeep}, \code{pipThreshold}, \code{hyper}, \code{g}, \code{initScale}
+and \code{priorScale}).
 \item \code{tripletLabels()}: the labels of the triplet.
 }
 }
@@ -91,6 +130,9 @@ effectSizes(fit)
 convergence(fit)
 instrumentStrength(fit)
 head(posteriorDraws(fit))
+firstStageEffects(fit)
+posteriorMeans(fit)$residualVariances
+fitSettings(fit)$nKeep
 
 }
 \seealso{

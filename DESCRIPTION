@@ -1,23 +1,25 @@
 Package: MRCCC
 Type: Package
 Title: Bayesian Mendelian Randomization for Causal Cell-Cell Communication
-Version: 0.99.6
+Version: 0.99.7
 Authors@R: c(
     person("Bitan", "Sarkar", email = "bitansarkar010899@gmail.com",
            role = c("aut", "cre"),
            comment = c(ORCID = "0009-0000-5178-5934")),
-    person("Yang", "Ni", role = c("aut", "fnd"),
-           comment = c(ORCID = "0000-0003-0636-2363")))
+    person("Yang", "Ni", role = "aut",
+           comment = c(ORCID = "0000-0003-0636-2363")),
+    person("National Institutes of Health", role = "fnd",
+           comment = "Grants R01GM148974 and R01GM163238"))
 Description: Implements MR-CCC, a Bayesian Mendelian randomization framework
     for inferring causal ligand-receptor signalling between cell types from
     population-scale single-cell expression and genotype data. For each
     ligand-receptor-pathway triplet, cis-eQTL genotypes instrument ligand
     expression in the sender cell type and receptor expression in the
-    receiver cell type, and a working model with a ligand-by-receptor
-    interaction is fitted to downstream pathway activity by a blocked Gibbs
-    sampler. A spike-and-slab prior on the causal block yields a posterior
-    inclusion probability that serves as the communication score, and the
-    retained draws support credible intervals, sign probabilities, the
+    receiver cell type. A working model with a ligand-by-receptor
+    interaction is then fitted to downstream pathway activity by a blocked
+    Gibbs sampler. A spike-and-slab prior on the causal block yields a
+    posterior inclusion probability that serves as the communication score.
+    The retained draws support credible intervals, sign probabilities, the
     receptor level at which the ligand effect reverses sign, and Bayesian
     false discovery rate control across many triplets. Inputs are taken
     from SummarizedExperiment objects of donor-level expression and
@@ -35,6 +37,7 @@ Imports:
     S4Vectors,
     GenomicRanges,
     IRanges,
+    BiocParallel,
     ggplot2 (>= 3.4.0),
     withr (>= 2.5.0)
 LinkingTo:
@@ -44,7 +47,10 @@ Suggests:
     testthat (>= 3.0.0),
     knitr,
     rmarkdown,
-    BiocStyle
+    BiocStyle,
+    SingleCellExperiment,
+    scuttle,
+    VariantAnnotation
 VignetteBuilder: knitr
 biocViews: Software, StatisticalMethod, Bayesian, GeneExpression, SingleCell,
     Genetics, SystemsBiology, GeneRegulation
@@ -53,7 +59,7 @@ BugReports: https://github.com/bitansa/MRCCC/issues
 Roxygen: list(markdown = TRUE)
 Config/testthat/edition: 3
 NeedsCompilation: yes
-Config/roxygen2/version: 8.1.0
+Config/roxygen2/version: 8.1.1
 Collate:
     'AllClasses.R'
     'AllGenerics.R'
@@ -68,6 +74,8 @@ Collate:
     'credibleIntervals.R'
     'hyperparameters.R'
     'internal.R'
+    'mrcccScreen.R'
+    'onek1kExample.R'
     'plotEffectCurve.R'
     'signProbabilities.R'
     'signReversal.R'

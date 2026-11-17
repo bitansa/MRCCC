@@ -21,8 +21,8 @@
 #'   effects, receptor main effect, and the causal block). If `NULL` (the
 #'   default), [mrccc()] sets \eqn{g = \min(n, 100)}, where \eqn{n} is the
 #'   number of donors. A positive number overrides this rule.
-#' @param ridge Non-negative diagonal ridge added before every matrix
-#'   inversion for numerical stability.
+#' @param ridge Positive diagonal ridge added before every matrix inversion
+#'   for numerical stability.
 #'
 #' @return A named list of class `mrcccHyperparameters` with elements
 #'   `aSigma`, `bSigma`, `aRho`, `bRho`, `nu1`, `g` and `ridge`.
@@ -46,7 +46,9 @@
 #' hyper <- mrcccHyperparameters()
 #' str(hyper)
 #'
-#' # A more diffuse slab and a fixed g-prior scale
+#' # A wider spike (less strict shrinkage under gamma = 0) and a fixed
+#' # g-prior scale of 50, which narrows the slab when there are more than
+#' # 50 donors
 #' mrcccHyperparameters(nu1 = 1e-3, g = 50)
 #'
 #' @export
@@ -67,8 +69,8 @@ mrcccHyperparameters <- function(aSigma = 3, bSigma = 2, aRho = 3, bRho = 1,
     if (nu1 <= 0 || nu1 >= 1) {
         stop("'nu1' must lie strictly between 0 and 1.", call. = FALSE)
     }
-    if (ridge < 0) {
-        stop("'ridge' must be non-negative.", call. = FALSE)
+    if (ridge <= 0) {
+        stop("'ridge' must be positive.", call. = FALSE)
     }
     if (!is.null(g)) {
         check_scalar(g, "g")

@@ -7,7 +7,7 @@
 \usage{
 credibleIntervals(x, ...)
 
-\S4method{credibleIntervals}{MRCCCFit}(x, level = 0.95, standardized = TRUE, ...)
+\S4method{credibleIntervals}{MRCCCFit}(x, level = 0.95, standardized = TRUE, included = FALSE, ...)
 }
 \arguments{
 \item{x}{An \link[=MRCCCFit-class]{MRCCCFit} object returned by \code{\link[=mrccc]{mrccc()}}.}
@@ -21,10 +21,16 @@ credibleIntervals(x, ...)
 the standardised scale (per standard deviation of ligand and receptor
 expression, in standard deviations of pathway activity). If \code{FALSE},
 they are on the centred input scale.}
+
+\item{included}{Logical. If \code{FALSE} (the default) the intervals use all
+pooled draws. If \code{TRUE}, they use only the draws with
+\eqn{\gamma = 1}, which gives the intervals conditional on the causal
+block being included, as reported for the discoveries in the paper.}
 }
 \value{
 A data frame with columns \code{parameter} (\code{beta_X}, \code{beta_XZ},
-\code{beta_Z}), \code{lower}, \code{median} and \code{upper}.
+\code{beta_Z}), \code{lower}, \code{median} and \code{upper}. With \code{included = TRUE} and no
+draw with \eqn{\gamma = 1}, the bounds are \code{NA}.
 }
 \description{
 Computes equal-tailed posterior credible intervals for \eqn{\beta_X},
@@ -37,7 +43,9 @@ the marginal posterior of each of these coefficients mixes draws
 concentrated near zero (\eqn{\gamma = 0}) with slab draws
 (\eqn{\gamma = 1}). An interval that covers zero therefore reflects the
 posterior weight of the spike as much as the uncertainty within the slab.
-See \code{\link[=signProbabilities]{signProbabilities()}} for a decomposition.
+See \code{\link[=signProbabilities]{signProbabilities()}} for a decomposition. With \code{included = TRUE} the
+spike draws are left out, so the intervals describe the size of the
+effects given that the ligand acts on the pathway.
 }
 \examples{
 sim <- simulateMRCCC(n = 200, seed = 1)
@@ -48,6 +56,7 @@ dat <- buildTriplet(sim$sender, sim$receiver, sim$genotypes,
 fit <- mrccc(dat, nIter = 4000, burnIn = 1000, seed = 1)
 credibleIntervals(fit)
 credibleIntervals(fit, level = 0.9, standardized = FALSE)
+credibleIntervals(fit, included = TRUE)
 
 }
 \seealso{

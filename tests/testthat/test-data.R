@@ -63,7 +63,7 @@ test_that("selectInstruments explains an empty result", {
     # "chr2".
     rr <- SummarizedExperiment::rowRanges(sim$genotypes)
     rr2 <- GenomicRanges::GRanges(
-        seqnames = sub("chr", "", as.character(rr@seqnames)),
+        seqnames = ifelse(startsWith(names(rr), "rsL"), "1", "2"),
         ranges = IRanges::ranges(rr))
     names(rr2) <- names(rr)
     geno <- SummarizedExperiment::SummarizedExperiment(
@@ -76,6 +76,24 @@ test_that("selectInstruments explains an empty result", {
     expect_equal(nrow(sel), 0L)
     expect_error(selectInstruments(sim$sender, "NOGENE", sim$genotypes),
                  "not a row name")
+    flat <- sim$sender
+    SummarizedExperiment::assay(flat)["LIG1", ] <- 1
+    expect_error(selectInstruments(flat, "LIG1", sim$genotypes),
+                 "same in every donor")
+})
+
+test_that("factor levels of dropped donors leave no empty covariate", {
+    recv <- sim$receiver
+    batch <- rep(c("b1", "b2"), length.out = ncol(recv))
+    batch[1:5] <- "b3"
+    recv$batch <- batch
+    dat <- suppressMessages(
+        buildTriplet(sim$sender[, -(1:5)], recv, sim$genotypes,
+                     ligand = "LIG1", receptor = "REC1",
+                     pathway = sim$pathwayGenes,
+                     covariates = c(testCovariates, "batch")))
+    expect_false("batchb3" %in% colnames(covariates(dat)))
+    expect_true(all(apply(covariates(dat), 2L, stats::var) > 0))
 })
 
 test_that("buildTriplet assembles a valid, donor-aligned triplet", {
@@ -201,6 +219,20 @@ test_that("MRCCCData rejects misaligned or invalid inputs", {
                   pathwayActivity = ybad, ligandGenotypes = inp$G,
                   receptorGenotypes = inp$H, covariates = inp$V),
         "contains NA")
+    Vna <- inp$V
+    Vna[3, 1] <- NA
+    expect_error(
+        MRCCCData(ligandExpression = inp$x, receptorExpression = inp$z,
+                  pathwayActivity = inp$y, ligandGenotypes = inp$G,
+                  receptorGenotypes = inp$H, covariates = Vna),
+        "'covariates' contains missing values")
+    Vdup <- inp$V
+    rownames(Vdup)[2] <- rownames(Vdup)[1]
+    expect_error(
+        MRCCCData(ligandExpression = inp$x, receptorExpression = inp$z,
+                  pathwayActivity = inp$y, ligandGenotypes = inp$G,
+                  receptorGenotypes = inp$H, covariates = Vdup),
+        "Donor names are not unique in covariates")
     expect_error(
         MRCCCData(ligandExpression = inp$x, receptorExpression = inp$z,
                   pathwayActivity = inp$y, ligandGenotypes = inp$G,
@@ -244,4 +276,48 @@ test_that("data frame covariates are expanded to indicators", {
                   pathwayActivity = inp$y, ligandGenotypes = inp$G,
                   receptorGenotypes = inp$H, covariates = df),
         "single value")
+})
+
+test_that("buildTriplet reads a precomputed pathway score from colData", {
+    rec <- sim$receiver
+    score <- stats::rnorm(ncol(rec))
+    cd <- SummarizedExperiment::colData(rec)
+    cd$pathwayScore <- score
+    SummarizedExperiment::colData(rec) <- cd
+    dat <- suppressMessages(
+        buildTriplet(sim$sender, rec, sim$genotypes,
+                     ligand = "LIG1", receptor = "REC1",
+                     pathway = "pathwayScore",
+                     covariates = testCovariates))
+    expect_equal(unname(pathwayActivity(dat)), score)
+    expect_match(S4Vectors::metadata(dat)$pathwayMethod, "colData column")
+    cd$pathwayText <- "a"
+    SummarizedExperiment::colData(rec) <- cd
+    expect_error(
+        buildTriplet(sim$sender, rec, sim$genotypes,
+                     ligand = "LIG1", receptor = "REC1",
+                     pathway = "pathwayText", covariates = testCovariates),
+        "must be numeric")
+})
+
+test_that("the instrument tables are available through metadata()", {
+    dat <- makeTriplet()
+    md <- S4Vectors::metadata(dat)
+    expect_s4_class(md$ligandInstruments, "DataFrame")
+    expect_identical(as.character(md$ligandInstruments$snp),
+                     colnames(ligandGenotypes(dat)))
+    expect_identical(md$pathwayMethod, "mean")
+})
+
+test_that("the OneK1K example has the documented layout", {
+    ex <- onek1kExample()
+    expect_named(ex, c("sender", "receiver", "genotypes", "triplets"))
+    expect_s4_class(ex$genotypes, "RangedSummarizedExperiment")
+    expect_identical(colnames(ex$sender), colnames(ex$receiver))
+    cd <- SummarizedExperiment::colData(ex$receiver)
+    expect_true(all(c("sex", "ageBin", "PC1", "PC2", "PC3",
+                      "interleukinPC1", "interleukinMean") %in%
+                        colnames(cd)))
+    expect_true(all(ex$triplets$ligand %in% rownames(ex$sender)))
+    expect_true(all(ex$triplets$receptor %in% rownames(ex$receiver)))
 })

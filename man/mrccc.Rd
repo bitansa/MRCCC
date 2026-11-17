@@ -18,6 +18,7 @@ mrccc(x, ...)
   hyper = mrcccHyperparameters(),
   seed = NULL,
   verbose = FALSE,
+  BPPARAM = BiocParallel::SerialParam(),
   ...
 )
 }
@@ -43,8 +44,9 @@ burn-in, which is the only extra cost.}
 
 \item{initScale}{Standard deviation of the normal distribution from which
 \eqn{\beta_X} and \eqn{\beta_{XZ}} are initialised, on the centred
-input scale, when \code{nChains > 1}. The default 1 gives standard normal
-starting values. With a single chain the sampler starts at zero.}
+input scale, when \code{nChains > 1}. It must then be positive, so that the
+chains start from different values. The default 1 gives standard normal
+starting values. With a single chain both effects start at zero.}
 
 \item{pipThreshold}{Threshold in \eqn{(0, 1)} that defines a discovery
 (\code{PIP > pipThreshold}). The default of 0.5 corresponds to the median
@@ -54,12 +56,21 @@ probability model. Used for the borderline warning and by
 \item{hyper}{Prior hyperparameters, as returned by
 \code{\link[=mrcccHyperparameters]{mrcccHyperparameters()}}.}
 
-\item{seed}{Optional integer. If supplied, the chains are run under this
-seed, which makes the whole multi-chain fit reproducible, and the
-caller's random number state is restored afterwards.}
+\item{seed}{Optional integer. If supplied, the fit is reproducible: one
+seed per chain is derived from it, each chain runs under its own seed
+wherever it is evaluated, and the caller's random number state is
+restored afterwards. With the default \code{NULL}, the per-chain seeds are
+drawn from the current random number stream, so calling \code{\link[=set.seed]{set.seed()}}
+beforehand also makes the fit reproducible.}
 
 \item{verbose}{Logical. If \code{TRUE}, each chain prints a progress line every
 1000 iterations.}
+
+\item{BPPARAM}{A \link[BiocParallel:BiocParallelParam-class]{BiocParallel::BiocParallelParam} object that
+controls how the chains are run. The default
+\code{\link[BiocParallel:SerialParam]{BiocParallel::SerialParam()}} runs them one after another. For example,
+\code{BiocParallel::MulticoreParam(4)} runs four chains at once. Because each
+chain has its own seed, the result does not depend on the back end.}
 }
 \value{
 An \link[=MRCCCFit-class]{MRCCCFit} object. See \link{MRCCCFit-accessors}.
@@ -79,15 +90,15 @@ diagnostics.
 \strong{Model.} For donor \eqn{i}, with \eqn{X^* = E[X \mid G, V]} and
 \eqn{Z^* = E[Z \mid H, V]} the genetically predicted ligand and receptor
 levels, the outcome model is
-\deqn{Y = \mu + \gamma(\beta_X X^* + \beta_{XZ} X^* Z^*) + \beta_Z Z^*
+\deqn{Y = \mu + \beta_X X^* + \beta_Z Z^* + \beta_{XZ} X^* Z^*
   + \alpha_Y^\top V + \tilde\varepsilon_Y,}
 where \eqn{X} is ligand expression, \eqn{Z} receptor expression, \eqn{Y}
-pathway activity, \eqn{G} and \eqn{H} the instrument dosages, \eqn{V} the
-covariates, and \eqn{\gamma \in \{0, 1\}} a spike-and-slab inclusion
-indicator for the causal block \eqn{(\beta_X, \beta_{XZ})}. Under
-\eqn{\gamma = 0} the prior variance of that block is multiplied by \code{nu1}
-(\eqn{10^{-4}} by default), so the coefficients are concentrated tightly
-at zero. The PIP \eqn{P(\gamma = 1 \mid \mathrm{data})} is the
+pathway activity, \eqn{G} and \eqn{H} the instrument dosages and \eqn{V}
+the covariates. The causal block \eqn{(\beta_X, \beta_{XZ})} has a
+spike-and-slab prior with inclusion indicator
+\eqn{\gamma \in \{0, 1\}}. Under \eqn{\gamma = 0} the prior variance of
+the block is multiplied by \code{nu1} (\eqn{10^{-4}} by default), so the
+coefficients are concentrated tightly at zero. The PIP \eqn{P(\gamma = 1 \mid \mathrm{data})} is the
 communication score. The receptor-modulated ligand effect is
 \eqn{\beta_X + \beta_{XZ} z}, which changes sign at
 \eqn{\tau = -\beta_X / \beta_{XZ}}. See \code{\link[=signReversal]{signReversal()}}.
@@ -124,6 +135,14 @@ length, and when any Gelman-Rubin \eqn{\hat R} exceeds
 chains. The default chain length is a starting point. Reported analyses
 should use chains long enough that neither warning is issued.
 
+\strong{Which R-hat.} \eqn{\hat R} is the classic Gelman-Rubin potential scale
+reduction factor (Gelman and Rubin, 1992), without the correction for
+sampling variability, which is the statistic defined and reported in the
+paper. The threshold 1.01 is the one recommended for the rank-normalised
+split \eqn{\hat R} of Vehtari et al. (2021). For the classic statistic,
+the conventional threshold is 1.1, so the check here is stricter than
+usual and errs on the side of longer chains.
+
 \strong{Settings used in the paper.} The real-data analysis ran four chains of
 100,000 iterations per triplet with a burn-in of 2,000. The simulation
 studies ran one chain per fit, of 20,000 iterations when the instruments
@@ -146,10 +165,18 @@ effectSizes(fit)
 }
 \references{
 Sarkar B, Ni Y (2026). MR-CCC: Bayesian Mendelian Randomization for
-Causal Cell-Cell Communication. arXiv:2604.23917.
+Causal Cell-Cell Communication. Bioinformatics (in press).
+arXiv:2604.23917.
+
+Gelman A, Rubin DB (1992). Inference from iterative simulation using
+multiple sequences. Statistical Science 7(4):457-472.
+
+Vehtari A, Gelman A, Simpson D, Carpenter B, Burkner P-C (2021).
+Rank-normalization, folding, and localization: an improved R-hat for
+assessing convergence of MCMC. Bayesian Analysis 16(2):667-718.
 }
 \seealso{
 \code{\link[=buildTriplet]{buildTriplet()}}, \link{MRCCCFit-accessors}, \code{\link[=credibleIntervals]{credibleIntervals()}},
 \code{\link[=signProbabilities]{signProbabilities()}}, \code{\link[=signReversal]{signReversal()}}, \code{\link[=plotEffectCurve]{plotEffectCurve()}},
-\code{\link[=bayesFDR]{bayesFDR()}}
+\code{\link[=mrcccScreen]{mrcccScreen()}}, \code{\link[=bayesFDR]{bayesFDR()}}
 }

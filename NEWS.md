@@ -1,3 +1,56 @@
+# MRCCC 0.99.7
+
+* `onek1kExample()` provides a small real-data example from the OneK1K
+  cohort (NK cells to monocytes, interleukin signalling), derived from the
+  public data of the paper by `inst/scripts/make-onek1k-example.R`. The
+  vignette fits and interprets the IL-18 triplet on it.
+* `mrcccScreen()` fits many triplets, in parallel through BiocParallel, and
+  `screenTable()` summarises them with Bayesian false discovery rate
+  control. `bayesFDR()` and `bfdrSelect()` accept a list of fits.
+* `mrccc()` gains a `BPPARAM` argument. Each chain runs under its own seed,
+  derived from `seed`, so the result does not depend on the back end.
+* `MRCCCData` extends `S4Vectors::Annotated`, so the instrument-selection
+  tables are read with `metadata()`.
+* New accessors `firstStageEffects()` (posterior effect of each instrument
+  on expression), `posteriorMeans()`, `inputScale()` and `fitSettings()`.
+* `credibleIntervals()` gains an `included` argument. With
+  `included = TRUE` the intervals use only the draws with `gamma = 1`, as
+  reported for the discoveries in the paper.
+* `buildTriplet()` accepts the name of a numeric `colData` column of the
+  receiver as a precomputed pathway score. The covariate design is built on
+  the retained donors, so a factor level found only among dropped donors
+  leaves no empty column.
+* Input checks are clearer. Missing covariate values and repeated donor
+  names are reported for every component. `selectInstruments()` stops when
+  the gene's expression is the same in every donor, and its message for an
+  empty result gives the number of SNPs in the window and after the carrier
+  filter. `initScale` must be positive when `nChains > 1`, and `ridge` must
+  be positive.
+* The borderline-PIP warning suggests a chain length that pools about
+  400,000 draws, as in the paper, for the number of chains used.
+* The fitting code of `mrccc()` is split into small internal helpers.
+* In the first iteration of a chain with dispersed starting values, the
+  update of the outcome variance now uses the drawn starting values of
+  `beta_X` and `beta_XZ` rather than zero. This affected only that one
+  iteration, which is always within the burn-in. Matrix inversions that the
+  sampler computed but never used are removed.
+* The default `minCandidates` of `selectInstruments()` is now 1, as in the
+  analysis of the paper: a gene keeps its instruments when at least one SNP
+  in its window can be screened.
+* The vignette has an installation section, a comparison with related
+  software, examples of building the inputs from a `SingleCellExperiment`
+  and from a VCF file, examples of `MRCCCData()`, the accessors and
+  `mrcccHyperparameters()`, a screen of several simulated triplets with the
+  code for the full real-data screen, and references.
+* The help pages describe every element of the stored settings, summaries
+  and diagnostics, explain the choice of R-hat threshold, and point to the
+  vignette. The National Institutes of Health are listed as funder with the
+  grant numbers.
+* New tests check that the sampler recovers simulated signals and nulls and
+  that the credible intervals cover the generating values. They also check
+  the diagnostics against hand-computed values, and the convergence
+  warnings.
+
 # MRCCC 0.99.6
 
 * The interface is now built on S4 classes. `MRCCCData` holds one

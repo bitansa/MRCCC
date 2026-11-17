@@ -70,7 +70,8 @@
 #'
 #' @references
 #' Sarkar B, Ni Y (2026). MR-CCC: Bayesian Mendelian Randomization for
-#' Causal Cell-Cell Communication. arXiv:2604.23917.
+#' Causal Cell-Cell Communication. Bioinformatics (in press).
+#' arXiv:2604.23917.
 #'
 #' @examples
 #' sim <- simulateMRCCC(n = 120, seed = 1)
@@ -83,7 +84,7 @@
 selectInstruments <- function(expression, gene, genotypes, covariates = NULL,
                               assay = 1L, genotypeAssay = 1L,
                               window = 2e5, maxSNPs = 10L, r2Max = 0.8,
-                              minCarrierFreq = 0.05, minCandidates = 5L) {
+                              minCarrierFreq = 0.05, minCandidates = 1L) {
     .checkRangedSE(expression, "expression")
     .checkRangedSE(genotypes, "genotypes")
     if (!is.character(gene) || length(gene) != 1L || is.na(gene)) {
@@ -124,6 +125,10 @@ selectInstruments <- function(expression, gene, genotypes, covariates = NULL,
              call. = FALSE)
     }
     y <- .assayRow(expression, gene, assay, donorIds, "expression")
+    if (stats::var(y) == 0) {
+        stop("Expression of '", gene, "' is the same in every donor, so ",
+             "no SNP can be screened.", call. = FALSE)
+    }
     if (!is.null(V)) V <- V[donorIds, , drop = FALSE]
 
     # ---- Window around the transcription start site ----
@@ -172,8 +177,10 @@ selectInstruments <- function(expression, gene, genotypes, covariates = NULL,
     meta$nScreened <- length(ok)
     if (length(ok) < minCandidates) {
         message("Only ", length(ok), " SNP(s) near '", gene, "' could be ",
-                "screened (minCandidates = ", minCandidates, "). No ",
-                "instruments returned.")
+                "screened (", length(inWindow), " in the window, ",
+                sum(keepCarrier), " passing the carrier filter, ",
+                "minCandidates = ", minCandidates, "). No instruments ",
+                "returned.")
         S4Vectors::metadata(empty) <- meta
         return(empty)
     }

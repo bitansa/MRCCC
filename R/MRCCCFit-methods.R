@@ -30,6 +30,21 @@ NULL
 #'   columns `chain`, `beta_X`, `beta_XZ`, `beta_Z`, `gamma`, `mu` and
 #'   `loglik`. With `standardized = TRUE` the three coefficients are
 #'   rescaled.
+#' * `firstStageEffects()`: a data frame with one row per instrument and
+#'   columns `exposure` (`ligand` or `receptor`), `snp`, `mean`, `lower` and
+#'   `upper`: the posterior mean and 95% credible interval of the effect of
+#'   one copy of the alternative allele on expression.
+#' * `posteriorMeans()`: a list with the posterior means of the remaining
+#'   parameters: `covariateEffects` (data frame with columns `covariate`,
+#'   `ligand`, `receptor` and `pathway`), `residualVariances`,
+#'   `inclusionProbabilityPrior` and `intercept`.
+#' * `inputScale()`: a list with the standard deviations (`sdX`, `sdZ`,
+#'   `sdY`) and means (`meanX`, `meanZ`, `meanY`) of ligand expression,
+#'   receptor expression and pathway activity, and the observed receptor
+#'   range in standard deviations from its mean (`zRangeStd`).
+#' * `fitSettings()`: a list of the run settings (`nIter`, `burnIn`,
+#'   `thin`, `nChains`, `nKeep`, `pipThreshold`, `hyper`, `g`, `initScale`
+#'   and `priorScale`).
 #' * `tripletLabels()`: the labels of the triplet.
 #'
 #' @seealso [mrccc()], [credibleIntervals()], [signProbabilities()],
@@ -48,6 +63,9 @@ NULL
 #' convergence(fit)
 #' instrumentStrength(fit)
 #' head(posteriorDraws(fit))
+#' firstStageEffects(fit)
+#' posteriorMeans(fit)$residualVariances
+#' fitSettings(fit)$nKeep
 #'
 #' @name MRCCCFit-accessors
 #' @rdname MRCCCFit-accessors
@@ -99,6 +117,22 @@ setMethod("posteriorDraws", "MRCCCFit",
 #' @rdname MRCCCFit-accessors
 #' @export
 setMethod("tripletLabels", "MRCCCFit", function(x) x@labels)
+
+#' @rdname MRCCCFit-accessors
+#' @export
+setMethod("firstStageEffects", "MRCCCFit", function(x) x@firstStage)
+
+#' @rdname MRCCCFit-accessors
+#' @export
+setMethod("posteriorMeans", "MRCCCFit", function(x) x@posteriorMeans)
+
+#' @rdname MRCCCFit-accessors
+#' @export
+setMethod("inputScale", "MRCCCFit", function(x) x@scale)
+
+#' @rdname MRCCCFit-accessors
+#' @export
+setMethod("fitSettings", "MRCCCFit", function(x) x@settings)
 
 .checkFlag <- function(x, name) {
     if (!is.logical(x) || length(x) != 1L || is.na(x)) {

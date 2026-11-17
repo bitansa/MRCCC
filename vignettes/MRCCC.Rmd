@@ -8,6 +8,7 @@ output:
   BiocStyle::html_document:
     toc: true
     toc_float: true
+bibliography: MRCCC.bib
 vignette: >
   %\VignetteIndexEntry{Introduction to MRCCC}
   %\VignetteEngine{knitr::rmarkdown}
@@ -29,20 +30,52 @@ Cell-cell communication is usually inferred from the co-expression of a
 ligand in one cell type and its receptor in another. Co-expression, however,
 is not evidence of a causal signal: shared regulators, tissue composition and
 technical factors all induce correlations between cell types without any
-signalling taking place. `r BiocStyle::Biocpkg("MRCCC")` implements MR-CCC, a
-Bayesian Mendelian randomization framework that uses cis-eQTL genotypes as
-instrumental variables for ligand expression in a sender cell type and for
-receptor expression in a receiver cell type, and asks whether the
-genetically predicted ligand level, modulated by the genetically predicted
-receptor level, shifts the activity of a downstream pathway in the receiver.
+signalling taking place. `r BiocStyle::Biocpkg("MRCCC")` implements MR-CCC
+[@sarkar2026mrccc], a Bayesian Mendelian randomization framework that uses
+cis-eQTL genotypes as instrumental variables for ligand expression in a
+sender cell type and for receptor expression in a receiver cell type. It
+asks whether the genetically predicted ligand level, modulated by the
+genetically predicted receptor level, shifts the activity of a downstream
+pathway in the receiver.
 
 The unit of analysis is a ligand-receptor-pathway triplet. For each triplet
 the package returns a posterior inclusion probability (PIP) that summarises
-the evidence for a causal signal, together with effect estimates, credible
-intervals, posterior sign probabilities, the receptor level at which the
-ligand effect reverses sign, and the Monte Carlo and convergence diagnostics
-needed to trust these numbers. Across many triplets, the PIPs can be
-thresholded with Bayesian false discovery rate control.
+the evidence for a causal signal. It also returns effect estimates, credible
+intervals, posterior sign probabilities and the receptor level at which the
+ligand effect reverses sign, with the Monte Carlo and convergence
+diagnostics needed to trust these numbers. Across many triplets, the PIPs can be
+thresholded with Bayesian false discovery rate control [@newton2004].
+
+## Relation to other software
+
+Existing tools for cell-cell communication score ligand-receptor
+co-expression. CellPhoneDB [@efremova2020cellphonedb] tests whether a pair
+is expressed together more than expected by chance. In Bioconductor,
+`r BiocStyle::Biocpkg("scTensor")` finds patterns of ligand-receptor
+co-expression across cell types by tensor decomposition, and
+`r BiocStyle::Biocpkg("CCPlotR")` visualises the interactions such tools
+report. These methods describe association and cannot separate a causal
+signal from confounding. Mendelian randomization software, such as the CRAN
+package `r BiocStyle::CRANpkg("MendelianRandomization")`
+[@yavorska2017mendelian], estimates causal effects of an exposure on an
+outcome, mostly from summary statistics of separate studies, without the
+cell-type structure of communication or a ligand-by-receptor interaction.
+MRCCC combines the two ideas. It uses individual-level genotypes of the same
+donors as instruments for both the ligand and the receptor, models the
+receptor-modulated ligand effect explicitly, and gives a PIP for each
+triplet. It works on Bioconductor data structures. Donor-level expression
+is held in `SummarizedExperiment` objects, which can be built from a
+`SingleCellExperiment`. Genotypes are held in a
+`RangedSummarizedExperiment`, which can be read from a VCF file. Gene and
+SNP positions are given as `GRanges`.
+
+# Installation
+
+```{r install, eval = FALSE}
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install("MRCCC")
+```
 
 ```{r load, message = FALSE}
 library(MRCCC)
@@ -52,9 +85,9 @@ library(SummarizedExperiment)
 # Input data
 
 MR-CCC is a *one-sample* method: expression and genotypes come from the same
-donors, as in population-scale single-cell studies such as OneK1K. Three
-objects are needed, each with donors in columns and identified by the same
-column names.
+donors, as in population-scale single-cell studies such as OneK1K
+[@yazar2022onek1k]. Three objects are needed, each with donors in columns
+and identified by the same column names.
 
 * **Sender expression**: a `RangedSummarizedExperiment` of donor-level
   (pseudo-bulk) expression in the sender cell type, genes in rows. Typically
@@ -73,15 +106,88 @@ read from `colData`.
 
 The instruments are therefore not SNP-gene pairs taken from an external eQTL
 catalogue. For each ligand and receptor gene, `selectInstruments()` finds
-cis-SNPs in the same donors: SNPs within 200 kb of the transcription start
+cis-SNPs in the same donors. SNPs within 200 kb of the transcription start
 site are screened by regressing the gene's donor-level expression on dosage,
-adjusted for the covariates, ranked by p-value, and retained greedily
-subject to a linkage-disequilibrium bound ($r^2 \le 0.8$) until at most ten
-are kept. This is the procedure of the MR-CCC paper.
+adjusted for the covariates. They are ranked by p-value and retained
+greedily, subject to a linkage-disequilibrium bound ($r^2 \le 0.8$), until
+at most ten are kept. This is the procedure of the MR-CCC paper
+[@sarkar2026mrccc].
 
-`simulateMRCCC()` generates data in exactly this layout. Its donors carry an
-unmeasured confounder that affects the ligand, the receptor and the pathway,
-which is the situation in which a plain co-expression analysis is misled.
+## From single cells to donor-level expression
+
+Single-cell data are usually held in a `SingleCellExperiment`, with one
+column per cell. Summing the counts of each cell type within each donor,
+for example with `aggregateAcrossCells()` from
+`r BiocStyle::Biocpkg("scuttle")` [@mccarthy2017scater], gives the
+donor-level objects that MRCCC needs. The small example below has two cell
+types and twelve donors.
+
+```{r pseudobulk, message = FALSE}
+library(SingleCellExperiment)
+library(scuttle)
+set.seed(2)
+cells <- data.frame(donor = rep(sprintf("donor%02d", 1:12), each = 40),
+                    cellType = rep(c("NK", "Monocyte"), times = 240))
+counts <- matrix(rpois(3 * nrow(cells), 5), nrow = 3,
+                 dimnames = list(c("LIG1", "REC1", "PW01"), NULL))
+sce <- SingleCellExperiment(assays = list(counts = counts),
+                            colData = cells)
+pseudo <- aggregateAcrossCells(sce,
+                               ids = colData(sce)[, c("donor", "cellType")])
+
+## One object per cell type, with donors as column names and counts divided
+## by a library-size factor, as in the paper.
+byCellType <- function(type) {
+    x <- pseudo[, pseudo$cellType == type]
+    colnames(x) <- x$donor
+    sizeFactor <- colSums(counts(x)) / median(colSums(counts(x)))
+    assay(x, "normcounts") <- sweep(counts(x), 2, sizeFactor, "/")
+    x
+}
+sender <- byCellType("NK")
+sender
+```
+
+Gene positions are then attached with `rowRanges(sender) <- ...`, using a
+`GRanges` object of the genes, for example from a `TxDb` or `EnsDb`
+annotation package. Donor covariates are added to `colData`.
+
+## From a VCF file to allele dosages
+
+Genotypes stored in a VCF file can be read with
+`r BiocStyle::Biocpkg("VariantAnnotation")` [@obenchain2014variantannotation].
+The `GT` field is converted to the number of alternative alleles. When the
+file holds imputed dosages, the `DS` field can be used directly instead.
+
+```{r vcf, message = FALSE}
+library(VariantAnnotation)
+vcfFile <- system.file("extdata", "chr22.vcf.gz",
+                       package = "VariantAnnotation")
+vcf <- readVcf(vcfFile, "hg19")
+gt <- geno(vcf)$GT
+toDosage <- function(g) {
+    alleles <- strsplit(g, "[|/]")
+    vapply(alleles, function(a) {
+        if (any(a == ".")) NA_real_ else sum(a != "0")
+    }, numeric(1))
+}
+dosage <- matrix(toDosage(gt), nrow = nrow(gt), dimnames = dimnames(gt))
+vcfGenotypes <- SummarizedExperiment(assays = list(dosage = dosage),
+                                     rowRanges = rowRanges(vcf))
+vcfGenotypes
+assay(vcfGenotypes, "dosage")[1:3, ]
+```
+
+The column names of the genotype object must match those of the expression
+objects. Missing dosages are allowed and are imputed by the SNP's mean
+dosage.
+
+# A simulated example
+
+`simulateMRCCC()` generates data in exactly the layout above. Its donors
+carry an unmeasured confounder that affects the ligand, the receptor and
+the pathway, which is the situation in which a plain co-expression analysis
+is misled.
 
 ```{r simulate}
 sim <- simulateMRCCC(n = 300, betaX = 0.3, betaXZ = 0.3, seed = 1)
@@ -92,14 +198,9 @@ head(colData(sim$receiver))
 
 The ligand `LIG1` is expressed in the sender and the receptor `REC1` in the
 receiver, and the downstream pathway consists of the genes
-`r paste(sim$pathwayGenes, collapse = ", ")` in the receiver. Genotypes are
-dosages:
+`r paste(sim$pathwayGenes, collapse = ", ")` in the receiver.
 
-```{r dosages}
-assay(sim$genotypes, "dosage")[1:4, 1:6]
-```
-
-# Selecting instruments
+## Selecting instruments
 
 ```{r select}
 covs <- c("sex", "age", "PC1", "PC2")
@@ -114,7 +215,7 @@ outside the window and SNPs in strong linkage disequilibrium with a better
 one are excluded. No p-value threshold is imposed. The strength of the
 selected set is reported by the fitted model as a first-stage F statistic.
 
-# Building a triplet
+## Building a triplet
 
 `buildTriplet()` matches donors across the three objects, reads the ligand,
 the receptor and the covariates, scores the pathway, and selects the
@@ -132,16 +233,39 @@ dat
 ```
 
 The pathway score is the mean expression of the pathway genes by default.
-`pathwayMethod = "pc1"` uses their first principal component instead, and a
-precomputed score (for example from AUCell, UCell or GSVA) can be passed as
-a numeric vector named by donor. The analysis in the paper computed six
-such scores for each pathway (first principal component, mean expression,
-AUCell, UCell, ssGSEA and GSVA) and used the one most correlated with
-ligand expression. Instruments chosen in another way can be
-supplied through `ligandSNPs` and `receptorSNPs`. When the data are already
-aligned vectors and matrices, `MRCCCData()` builds the same object directly.
+`pathwayMethod = "pc1"` uses their first principal component instead. A
+precomputed score, for example from AUCell [@aibar2017scenic], UCell
+[@andreatta2021ucell], ssGSEA [@barbie2009ssgsea] or GSVA
+[@hanzelmann2013gsva], can be stored as a column of `colData(receiver)` and
+named in `pathway`, or passed as a numeric vector named by donor. The
+analysis in the paper computed six such scores for each pathway and used
+the one most strongly correlated, in absolute value, with ligand expression.
 
-# The model
+The components of the triplet are read with accessors, and the
+instrument-selection tables are kept in its `metadata()`:
+
+```{r accessorsData}
+head(ligandExpression(dat))
+dim(ligandGenotypes(dat))
+head(covariates(dat), 3)
+metadata(dat)$receptorInstruments
+```
+
+When the data are already aligned vectors and matrices, `MRCCCData()`
+builds the same object directly. Donors are matched by name, so components
+given in a different donor order are aligned:
+
+```{r constructor}
+dat2 <- MRCCCData(ligandExpression = ligandExpression(dat),
+                  receptorExpression = rev(receptorExpression(dat)),
+                  pathwayActivity = pathwayActivity(dat),
+                  ligandGenotypes = ligandGenotypes(dat),
+                  receptorGenotypes = receptorGenotypes(dat),
+                  covariates = covariates(dat))
+identical(receptorExpression(dat2), receptorExpression(dat))
+```
+
+## The model
 
 For donor $i$, let $X_i$ be ligand expression in the sender cell type, $Z_i$
 receptor expression in the receiver cell type, and $Y_i$ pathway activity in
@@ -150,25 +274,34 @@ receptor instruments and $V_i$ the covariates. The first stage predicts each
 exposure from its instruments, $X_i^* = E[X_i \mid G_i, V_i]$ and
 $Z_i^* = E[Z_i \mid H_i, V_i]$. The second stage models the outcome as
 $$
-Y_i = \mu + \gamma\,(\beta_X X_i^* + \beta_{XZ} X_i^* Z_i^*) + \beta_Z Z_i^*
-    + \alpha_Y^\top V_i + \tilde\varepsilon_{Yi},
+Y_i = \mu + \beta_X X_i^* + \beta_Z Z_i^* + \beta_{XZ} X_i^* Z_i^*
+    + \alpha_Y^\top V_i + \tilde\varepsilon_{Yi}.
 $$
-where $\gamma \in \{0, 1\}$ is a spike-and-slab inclusion indicator on the
-causal block $(\beta_X, \beta_{XZ})$. Because $X^*$ and $Z^*$ depend only
+The causal block $(\beta_X, \beta_{XZ})$ has a spike-and-slab prior with
+inclusion indicator $\gamma \in \{0, 1\}$. Under $\gamma = 0$ its prior
+variance is shrunk by a small factor, so the two coefficients are held
+close to zero. Because $X^*$ and $Z^*$ depend only
 on genotype and the observed covariates, they are unaffected by the
 unmeasured confounders that distort a naive regression of $Y$ on $X$ and
 $Z$. All stages are estimated jointly by a blocked Gibbs sampler.
 
-The posterior inclusion probability $\mathrm{PIP} = P(\gamma = 1 \mid
-\text{data})$ is the communication score. The receptor-modulated ligand
-effect is $\beta_X + \beta_{XZ} z$, which changes sign at $\tau = -\beta_X /
-\beta_{XZ}$: when $\tau$ lies inside the observed receptor range, the ligand
-activates the pathway in some donors and suppresses it in others. All
-inputs are centred internally, and effects are reported on a standardised
-scale (per standard deviation of $X$ and $Z$, in standard deviations of $Y$)
-as well as on the input scale.
+The PIP $P(\gamma = 1 \mid \text{data})$ is the communication score. The
+receptor-modulated ligand effect is $\beta_X + \beta_{XZ} z$, which changes
+sign at $\tau = -\beta_X / \beta_{XZ}$: when $\tau$ lies inside the observed
+receptor range, the ligand activates the pathway in some donors and
+suppresses it in others. All inputs are centred internally, and effects are
+reported on a standardised scale (per standard deviation of $X$ and $Z$, in
+standard deviations of $Y$) as well as on the input scale.
 
-# Fitting the model
+The prior hyperparameters are set with `mrcccHyperparameters()` and passed
+to `mrccc()` through its `hyper` argument. The defaults are those of the
+paper. For example, a wider spike:
+
+```{r hyper}
+mrcccHyperparameters(nu1 = 1e-3)
+```
+
+## Fitting the model
 
 `mrccc()` runs four chains from dispersed starting values and pools them.
 The default chain length is used here.
@@ -180,7 +313,7 @@ fit
 
 The fit is an `MRCCCFit` object, and its contents are read with accessors:
 
-```{r accessors}
+```{r accessorsFit}
 pip(fit)
 pipMCSE(fit)
 effectSizes(fit)
@@ -188,14 +321,19 @@ instrumentStrength(fit)
 convergence(fit)
 ```
 
-The Gelman-Rubin statistics in `convergence()` are below 1.01, so the four
-chains agree. `mrccc()` warns when any of them exceeds 1.01, and when the
+The largest Gelman-Rubin statistic in `convergence()` is
+`r round(max(convergence(fit)$rhat, na.rm = TRUE), 3)`, below 1.01, so the
+four chains agree. `mrccc()` warns when any of them exceeds 1.01, and when the
 PIP is within two Monte Carlo standard errors of the discovery threshold.
 In either case the chains should be lengthened before the result is
 reported. A statistic is `NA` when every chain holds the same constant
 value, as happens for $\gamma$ when the PIP is one. The Monte Carlo
 standard error and effective sample size of the PIP are then `NA` as well,
-because the indicator never changes value.
+because the indicator never changes value. The statistic is the classic
+Gelman-Rubin potential scale reduction factor [@gelman1992rubin], as in the
+paper. The threshold 1.01 is the one recommended for the rank-normalised
+split $\hat R$ [@vehtari2021rhat]. For the classic statistic, it is stricter
+than the conventional 1.1.
 
 `summary()` collects the main quantities:
 
@@ -203,48 +341,28 @@ because the indicator never changes value.
 summary(fit)
 ```
 
-# Posterior summaries
-
-## Credible intervals
+## Posterior summaries
 
 ```{r ci}
 credibleIntervals(fit)
-credibleIntervals(fit, level = 0.9, standardized = FALSE)
+signProbabilities(fit)
+signReversal(fit)
 ```
-
-## Sign probabilities of the interaction
 
 The prior on $(\beta_X, \beta_{XZ})$ is a spike-and-slab mixture, so the
 marginal posterior of $\beta_{XZ}$ mixes draws taken while $\gamma = 0$
 (concentrated near zero) with draws taken while $\gamma = 1$. The marginal
 sign probabilities combine the evidence that there is an effect with the
 evidence about its direction. The conditional probabilities describe the
-direction given that the ligand acts on the pathway.
-
-```{r signs}
-signProbabilities(fit)
-```
-
-## Sign-reversal threshold
-
-`signReversal()` computes $\tau = -\beta_X / \beta_{XZ}$ from paired draws,
-in standard deviations of receptor expression relative to its mean. The
-column `pInRange` is the posterior probability that $\tau$ lies inside the
-observed receptor range, which determines whether the reversal is realised
-among the donors.
-
-```{r tau}
-signReversal(fit)
-```
-
-The true threshold in this simulation is `r round(sim$truth$tauStd, 2)`
-standard deviations from the mean receptor expression.
-
-## Effect curve
+direction given that the ligand acts on the pathway. `signReversal()`
+reports $\tau$ in standard deviations of receptor expression from its mean,
+with `pInRange`, the posterior probability that the reversal happens within
+the observed receptor range. The true threshold in this simulation is
+`r round(sim$truth$tauStd, 2)` standard deviations from the mean.
 
 `plotEffectCurve()`, also available as `plot(fit)`, draws the posterior mean
-of $\beta_X + \beta_{XZ} z$ over the observed receptor range with a
-pointwise credible band built from paired draws.
+of $\beta_X + \beta_{XZ} z$ with a pointwise credible band built from paired
+draws.
 
 ```{r curve}
 #| fig.cap: >
@@ -253,47 +371,155 @@ pointwise credible band built from paired draws.
 plotEffectCurve(fit)
 ```
 
+# A real-data example: OneK1K
+
+`onek1kExample()` loads a small subset of the OneK1K cohort
+[@yazar2022onek1k] that ships with the package. It covers the NK cells to
+monocytes axis analysed in the paper, restricted to the ligand-receptor
+pairs that CellPhoneDB classifies as "Signaling by Interleukin". The help
+page `?onek1kExample` describes how it was derived from the public data of
+the paper.
+
+```{r onek1k}
+ex <- onek1kExample()
+ex$sender
+ex$receiver
+ex$triplets
+```
+
+The receiver `colData` holds the covariates of the paper (sex, age in seven
+groups and three genotype principal components) and the first
+principal component of the Reactome interleukin gene set, which the paper
+used as the pathway activity of the IL-18 triplets. We fit the paper's lead
+finding, the effect of NK-cell *IL18* on monocyte interleukin signalling,
+modulated by the receptor chain *IL18R1*.
+
+```{r realFit}
+realCovs <- c("sex", "ageBin", "PC1", "PC2", "PC3")
+il18 <- buildTriplet(ex$sender, ex$receiver, ex$genotypes,
+                     ligand = "IL18", receptor = "IL18R1",
+                     pathway = "interleukinPC1", covariates = realCovs,
+                     pathwayName = "Signaling by Interleukin",
+                     senderName = "NK cells", receiverName = "Monocytes")
+il18
+fitIL18 <- mrccc(il18, nIter = 50000, seed = 1)
+fitIL18
+```
+
+The message about weak instruments is expected. As in the paper, the
+cis-eQTLs of these genes explain little of their expression, which is
+typical of single-cell eQTL data. MR-CCC does not require strong
+instruments, but its PIPs are then less decisive, and the paper ran four
+chains of 100,000 iterations per triplet. With the shorter chains used
+here, the PIP is `r round(pip(fitIL18), 2)`, compared with 0.90 in the paper.
+The estimated effects of the individual instruments on expression, the
+direction of the interaction, and the credible intervals given that the
+causal block is included, as reported in the paper, are:
+
+```{r realSummaries}
+firstStageEffects(fitIL18)
+signProbabilities(fitIL18)
+credibleIntervals(fitIL18, included = TRUE)
+signReversal(fitIL18)
+```
+
+A positive interaction means that the ligand effect is larger in donors
+whose monocytes express more *IL18R1*. The paper discusses this finding,
+its sensitivity to single instruments and to the pathway representation,
+and its biological interpretation [@sarkar2026mrccc].
+
+# Screening many triplets
+
+In a full analysis every candidate triplet is fitted, and the set of
+discoveries is chosen with Bayesian false discovery rate control. For a
+declared set $S$ the Bayesian false discovery rate is
+$$
+\mathrm{bFDR}(S) = |S|^{-1} \sum_{j \in S} (1 - \mathrm{PIP}_j),
+$$
+the posterior expected proportion of false discoveries [@newton2004].
+`mrcccScreen()` fits a list of triplets, and `screenTable()` summarises
+them, ranked by PIP, with the bFDR of each nested set and the largest set
+whose bFDR does not exceed a target level. The triplets are fitted in
+parallel when `BPPARAM` is, for example, `BiocParallel::MulticoreParam()`.
+
+To keep this document fast, the screen below uses four simulated triplets
+with strong instruments: one with a ligand main effect and an interaction,
+one with a main effect only, and two nulls.
+
+```{r screen}
+settings <- data.frame(betaX = c(0.3, 0.3, 0, 0), betaXZ = c(0.3, 0, 0, 0))
+simTriplets <- lapply(seq_len(nrow(settings)), function(k) {
+    s <- simulateMRCCC(n = 300, betaX = settings$betaX[k],
+                       betaXZ = settings$betaXZ[k], seed = 10 + k)
+    buildTriplet(s$sender, s$receiver, s$genotypes,
+                 ligand = "LIG1", receptor = "REC1",
+                 pathway = s$pathwayGenes, covariates = covs,
+                 pathwayName = "Simulated pathway")
+})
+names(simTriplets) <- c("main+interaction", "main only", "null 1", "null 2")
+fits <- mrcccScreen(simTriplets, nIter = 20000, nChains = 2, seed = 1)
+screenTable(fits, alpha = 0.10)
+```
+
+`bayesFDR()` and `bfdrSelect()` take the same list of fits, or a numeric
+vector of PIPs:
+
+```{r bfdr}
+bfdrSelect(fits, alpha = 0.10)
+```
+
+The same call screens the eight interleukin triplets of the real example.
+Because their instruments are weak, the chains must be much longer than
+above for every triplet to converge, so the code is shown without being run.
+With chains as long as in the paper it takes about 20 minutes on one core
+of a recent laptop, and less with a parallel `BPPARAM`.
+
+```{r screenReal, eval = FALSE}
+realTriplets <- lapply(seq_len(nrow(ex$triplets)), function(k) {
+    buildTriplet(ex$sender, ex$receiver, ex$genotypes,
+                 ligand = ex$triplets$ligand[k],
+                 receptor = ex$triplets$receptor[k],
+                 pathway = "interleukinPC1", covariates = realCovs,
+                 pathwayName = "Signaling by Interleukin")
+})
+names(realTriplets) <- paste(ex$triplets$ligand, ex$triplets$receptor,
+                             sep = "-")
+realFits <- mrcccScreen(realTriplets, nIter = 100000, seed = 1,
+                        BPPARAM = BiocParallel::MulticoreParam(4))
+screenTable(realFits, alpha = 0.10)
+```
+
+In the paper, the two IL-18 triplets are the discoveries of this pathway
+class on this axis. There, each triplet used the pathway representation most
+strongly correlated, in absolute value, with ligand expression. The PIPs of
+the other triplets can therefore differ from those obtained here with the
+first principal component for all.
+
 # Choosing the chain length
 
 The PIP is the mean of an autocorrelated binary chain, so its Monte Carlo
-standard error (MCSE) is estimated by non-overlapping batch means within each
-chain and combined across chains. The effective sample size (ESS) is the
-number of independent draws that would give the same precision. Pooling
-$C$ chains of `nIter` iterations, each discarding `burnIn`, carries about
-the same standard error as one chain that retains $C \times$ (`nIter` $-$
-`burnIn`) draws, and several chains also yield $\hat R$.
+standard error (MCSE) is estimated by non-overlapping batch means within
+each chain and combined across chains. The effective sample size (ESS) is
+the number of independent draws that would give the same precision.
+Pooling $C$ chains of `nIter` iterations, each discarding `burnIn`, carries
+about the same standard error as one chain that retains $C \times$
+(`nIter` $-$ `burnIn`) draws, and several chains also yield $\hat R$.
+Each chain has its own seed, derived from `seed`, so the chains can run in
+parallel through the `BPPARAM` argument of `mrccc()` without changing the
+result.
 
 When the PIP lies close to the discovery threshold, or the instruments are
 weak, much longer chains are needed to resolve it. The real-data analysis
 in the paper pools four chains of 100,000 iterations per triplet. Its
 simulation studies run one chain per fit, of 20,000 iterations when the
 instruments are strong and of 400,000 iterations when they are weak or
-otherwise misspecified. A single chain is run with `nChains = 1`, and it
-starts from zero. `posteriorDraws()` returns the retained draws with their
-chain index for trace plots and further checks.
+otherwise misspecified. A single chain is run with `nChains = 1`, and its
+effects start at zero. `posteriorDraws()` returns the retained draws with their
+chain index for trace plots and further checks, and `fitSettings()`
+returns the settings of a fit.
 
 ```{r draws}
 head(posteriorDraws(fit))
-```
-
-# Screening many triplets
-
-In a full analysis `buildTriplet()` and `mrccc()` are applied to every
-candidate triplet, and the PIPs are collected. For a declared set $S$ the
-Bayesian false discovery rate is
-$$
-\mathrm{bFDR}(S) = |S|^{-1} \sum_{j \in S} (1 - \mathrm{PIP}_j),
-$$
-the posterior expected proportion of false discoveries. `bayesFDR()` returns
-the bFDR of each nested top-$k$ set ranked by PIP, and `bfdrSelect()` selects
-the largest set whose bFDR does not exceed a target level. Both accept a
-numeric vector of PIPs or a list of `MRCCCFit` objects.
-
-```{r bfdr}
-pips <- c(0.98, 0.95, 0.91, 0.84, 0.72, 0.61, 0.48, 0.30, 0.12, 0.05)
-data.frame(pip = pips, bfdr = bayesFDR(pips),
-           selected10 = bfdrSelect(pips, alpha = 0.10),
-           selected20 = bfdrSelect(pips, alpha = 0.20))
 ```
 
 # Session information
@@ -301,3 +527,5 @@ data.frame(pip = pips, bfdr = bayesFDR(pips),
 ```{r session}
 sessionInfo()
 ```
+
+# References

@@ -23,7 +23,9 @@ convergence diagnostics, the first-stage instrument strength, and the
 settings of the run. Use the accessors rather than the slots: \code{\link[=pip]{pip()}},
 \code{\link[=pipMCSE]{pipMCSE()}}, \code{\link[=effectSizes]{effectSizes()}}, \code{\link[=credibleIntervals]{credibleIntervals()}},
 \code{\link[=signProbabilities]{signProbabilities()}}, \code{\link[=signReversal]{signReversal()}}, \code{\link[=convergence]{convergence()}},
-\code{\link[=instrumentStrength]{instrumentStrength()}}, \code{\link[=posteriorDraws]{posteriorDraws()}} and \code{\link[=plotEffectCurve]{plotEffectCurve()}}.
+\code{\link[=instrumentStrength]{instrumentStrength()}}, \code{\link[=firstStageEffects]{firstStageEffects()}}, \code{\link[=posteriorMeans]{posteriorMeans()}},
+\code{\link[=posteriorDraws]{posteriorDraws()}}, \code{\link[=inputScale]{inputScale()}}, \code{\link[=fitSettings]{fitSettings()}} and
+\code{\link[=plotEffectCurve]{plotEffectCurve()}}.
 }
 \section{Slots}{
 
@@ -35,18 +37,42 @@ settings of the run. Use the accessors rather than the slots: \code{\link[=pip]{
 \item{\code{pipESS}}{Effective sample size of the pooled indicator chain.}
 
 \item{\code{draws}}{Data frame of retained draws, one row per draw, with columns
-\code{chain}, \code{beta_X}, \code{beta_XZ}, \code{beta_Z}, \code{gamma}, \code{mu} and \code{loglik}, the
-coefficients on the centred input scale.}
+\code{chain}, \code{beta_X}, \code{beta_XZ}, \code{beta_Z}, \code{gamma}, \code{mu} (intercept) and
+\code{loglik} (joint log-likelihood of the three equations), the
+coefficients on the centred input scale. Read with \code{\link[=posteriorDraws]{posteriorDraws()}}.}
 
 \item{\code{scale}}{List with the standard deviations (\code{sdX}, \code{sdZ}, \code{sdY}) and
-means (\code{meanX}, \code{meanZ}, \code{meanY}) of the inputs and the observed
-receptor range in standard-deviation units (\code{zRangeStd}).}
+means (\code{meanX}, \code{meanZ}, \code{meanY}) of ligand expression, receptor
+expression and pathway activity, and the observed receptor range in
+standard deviations from its mean (\code{zRangeStd}). Read with
+\code{\link[=inputScale]{inputScale()}}.}
 
-\item{\code{diagnostics}}{Data frame of Gelman-Rubin statistics.}
+\item{\code{diagnostics}}{Data frame with columns \code{parameter} (\code{beta_X},
+\code{beta_XZ}, \code{gamma}, \code{loglik}) and \code{rhat}, the Gelman-Rubin statistic
+(\code{NA} for a single chain). Read with \code{\link[=convergence]{convergence()}}.}
 
-\item{\code{instruments}}{Data frame of first-stage instrument strength.}
+\item{\code{instruments}}{Data frame with one row per exposure and columns
+\code{exposure} (\code{ligand}, \code{receptor}), \code{nInstruments}, \code{F} (first-stage
+partial F statistic after the covariates) and \code{weak} (\code{F < 10}). Read
+with \code{\link[=instrumentStrength]{instrumentStrength()}}.}
 
-\item{\code{settings}}{List of sampler settings and hyperparameters.}
+\item{\code{firstStage}}{Data frame with one row per instrument and columns
+\code{exposure}, \code{snp}, \code{mean}, \code{lower} and \code{upper}: the posterior mean and
+95\% credible interval of the instrument's effect on expression per copy
+of the alternative allele. Read with \code{\link[=firstStageEffects]{firstStageEffects()}}.}
+
+\item{\code{posteriorMeans}}{List of the posterior means of the remaining
+parameters: \code{covariateEffects} (data frame with columns \code{covariate},
+\code{ligand}, \code{receptor} and \code{pathway}), \code{residualVariances} (named vector
+for the ligand, receptor and pathway equations),
+\code{inclusionProbabilityPrior} (\eqn{\rho}) and \code{intercept}
+(\eqn{\mu}). Read with \code{\link[=posteriorMeans]{posteriorMeans()}}.}
+
+\item{\code{settings}}{List of the run settings: \code{nIter}, \code{burnIn}, \code{thin},
+\code{nChains}, \code{nKeep} (retained draws per chain), \code{pipThreshold}, \code{hyper}
+(the hyperparameters), \code{g} (the g-prior scale used), \code{initScale} and
+\code{priorScale} (the fixed second-stage prior scale \code{d_X}, \code{d_XZ},
+\code{d_Z}). Read with \code{\link[=fitSettings]{fitSettings()}}.}
 
 \item{\code{labels}}{Labels copied from the \link[=MRCCCData-class]{MRCCCData} object.}
 }}
